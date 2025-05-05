@@ -1,0 +1,32 @@
+{
+  "name": "mcp-rdf",
+  "version": "1.0.0",
+  "description": "MCP Server for RDF Knowledge Graph",
+  "main": "dist/server.js",
+  "types": "dist/server.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "dev": "ts-node src/server.ts",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "bin": {
+    "mcp-rdf": "./dist/server.js"
+  },
+  "keywords": [
+    "mcp",
+    "rdf",
+    "knowledge-graph",
+    "model-context-protocol"
+  ],
+  "author": "cdemir",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^20.11.24",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.11.0"
+  }
+}
