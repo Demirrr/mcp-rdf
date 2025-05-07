@@ -2,16 +2,17 @@ import { RDFKnowledgeGraphManager } from "./src/RDFManager";
 import { RDFVisualizer } from "./src/RDFVisualizer";
 
 const rdfManager = new RDFKnowledgeGraphManager("./rdf-store.jsonld");
-const visualizer = new RDFVisualizer(rdfManager, 3000);
+const visualizer = new RDFVisualizer(rdfManager, 4000, "./src/visualization.html");
 
 // Initialize the visualization server
 visualizer.initialize();
 
 // Load and display initial graph
-//rdfManager.readGraph().then(graph => {
-//    console.log(graph);
-//});
-
+/*
+rdfManager.readGraph().then(graph => {
+    console.log(graph);
+});
+*/
 
 
 /*
