@@ -19,15 +19,77 @@
       justify-content: center;
       align-items: center;
     }
+    .controls {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      z-index: 1000;
+      padding: 15px;
+      background-color: rgba(240, 240, 240, 0.8); /* Semi-transparent background */
+      border: 1px solid lightgray;
+      border-radius: 5px;
+      text-align: right; /* Align items to the right within the controls */
+      display: flex;
+      flex-direction: column; /* Stack elements vertically */
+      gap: 10px; /* Space between elements */
+    }
+    .input-group {
+      display: flex;
+      justify-content: flex-end; /* Align labels and inputs to the right */
+      align-items: center;
+      margin-bottom: 5px;
+    }
+    label {
+      margin-left: 10px;
+    }
+    input[type="text"] {
+      padding: 8px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      margin-left: 5px;
+      width: 200px; /* Adjust width as needed */
+    }
+    button {
+      padding: 8px 16px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #45a049;
+    }
+    #downloadButton {
+      background-color: #007bff; /* Blue color for download button */
+    }
+    #downloadButton:hover {
+      background-color: #0056b3;
+    }
   </style>
 </head>
 <body>
   <div id="mynetwork"></div>
-  <div style="position: absolute; top: 20px; right: 20px; z-index: 1000;">
+  <div class="controls">
+    <h3>Add New Triple</h3>
+    <div class="input-group">
+      <input type="text" id="subject" placeholder="e.g., http://example.org/resource1">
+      <label for="subject">Subject:</label>
+    </div>
+    <div class="input-group">
+      <input type="text" id="predicate" placeholder="e.g., http://example.org/ontology/knows">
+      <label for="predicate">Predicate:</label>
+    </div>
+    <div class="input-group">
+      <input type="text" id="object" placeholder="e.g., http://example.org/resource2 or 'Literal Value'">
+      <label for="object">Object:</label>
+      <input type="checkbox" id="isLiteral">
+      <label for="isLiteral">Literal</label>
+    </div>
+    <button onclick="addTriple()">Add Triple</button>
+    <button id="downloadButton" onclick="downloadGraph()">Download Graph (JSON)</button>
     <input type="file" id="fileInput" accept=".json,.jsonld" style="display: none;" />
-    <button onclick="document.getElementById('fileInput').click()" style="padding: 8px 16px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;">
-      Load JSON-LD File
-    </button>
+    <button onclick="document.getElementById('fileInput').click()">Load JSON-LD File</button>
   </div>
   <script type="text/javascript">
     const nodes = new vis.DataSet([]);
@@ -40,6 +102,7 @@
       physics: { enabled: true, barnesHut: { gravitationalConstant: -2000, centralGravity: 0.3, springLength: 95, springConstant: 0.04 }, minVelocity: 0.75 }
     };
     const network = new vis.Network(container, data, options);
+    const socket = io(`http://localhost:${window.location.port}`); // Use dynamic port
 
     document.getElementById('fileInput').addEventListener('change', async function(event) {
       const file = event.target.files[0];
@@ -56,8 +119,11 @@
       }
     });
 
-    const socket = io('http://localhost:${this.port}');
-    socket.on('connect', () => socket.emit('requestGraph'));
+    socket.on('connect', () => {
+      console.log('Connected to WebSocket');
+      socket.emit('requestGraph');
+    });
+
     socket.on('graphData', function(data) {
       nodes.clear();
       edges.clear();
@@ -65,6 +131,44 @@
       edges.add(data.edges);
       network.fit();
     });
+
+    function addTriple() {
+      const subject = document.getElementById('subject').value;
+      const predicate = document.getElementById('predicate').value;
+      const object = document.getElementById('object').value;
+      const isLiteral = document.getElementById('isLiteral').checked;
+
+      if (!subject || !predicate || !object) {
+        alert('Please fill in all triple fields.');
+        return;
+      }
+
+      const newTriple = { subject: subject, predicate: predicate, object: object, isLiteral: isLiteral };
+
+      // Send the new triple to the server via WebSocket
+      socket.emit('addTriple', newTriple);
+
+      // Clear the input fields
+      document.getElementById('subject').value = '';
+      document.getElementById('predicate').value = '';
+      document.getElementById('object').value = '';
+      document.getElementById('isLiteral').checked = false;
+    }
+
+    function downloadGraph() {
+      const graphData = {
+        nodes: nodes.get(),
+        edges: edges.get()
+      };
+      const jsonString = JSON.stringify(graphData, null, 2);
+      const blob = new Blob([jsonString], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'graph.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
   </script>
 </body>
 </html>
