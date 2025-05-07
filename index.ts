@@ -1,4 +1,20 @@
-import { RDFKnowledgeGraphManager, Triple } from './src/RDFKnowledgeGraphManager';
+import { RDFKnowledgeGraphManager } from "./src/RDFManager";
+import { RDFVisualizer } from "./src/RDFVisualizer";
+
+const rdfManager = new RDFKnowledgeGraphManager("./rdf-store.jsonld");
+const visualizer = new RDFVisualizer(rdfManager, 3000);
+
+// Initialize the visualization server
+visualizer.initialize();
+
+// Load and display initial graph
+//rdfManager.readGraph().then(graph => {
+//    console.log(graph);
+//});
+
+
+
+/*
 import * as readline from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import { join } from "node:path";
@@ -6,8 +22,6 @@ import { homedir } from "node:os";
 import type { StdioServerParameters } from "@modelcontextprotocol/sdk/client/stdio.js";
 import type { InferenceProvider } from "@huggingface/inference";
 import type { ChatCompletionStreamOutput } from "@huggingface/tasks/src/tasks/chat-completion/inference";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod"; // Import zod for schema validation
 
 import { ANSI } from "./src/util";
 import { Agent } from './src/Agent';
@@ -22,149 +36,16 @@ const TOKEN = process.env.TOKEN ?? "token-tentris-upb"
 const MODEL_ID = process.env.MODEL_ID ?? "tentris"
 const DESKTOP_PATH = join(homedir(), "Desktop");
 
-// Initialize the RDF Knowledge Graph Manager
-const rdfKnowledgeGraphManager = new RDFKnowledgeGraphManager();
 
-// Create MCP Server for RDF
-const rdfServer = new McpServer({
-    name: "rdf-knowledge-graph",
-    version: "1.0.0",
-    capabilities: {resources: {},tools: {},}});
-
-// Add methods to the server
-
-// Initialize method
-rdfServer.tool(
-    "initialize", 
-    "Initialize the RDF knowledge graph server", 
-    {}, 
-    async () => {
-        console.log("RDF Knowledge Graph MCP Server initialized");
-        return {
-            content: [
-                {
-                    type: "text",
-                    text: "RDF server initialized successfully"
-                }
-            ]
-        };
-    }
-);
-// Method to add triples to the RDF store
-rdfServer.tool(
-    "add-triples", 
-    "Add new triples to the RDF knowledge graph", 
-    {
-        triples: z.array(z.object({
-            subject: z.string().describe("URI or blank node identifier for the subject"),
-            predicate: z.string().describe("URI for the predicate"),
-            object: z.string().describe("URI, blank node or literal value for the object"),
-            datatype: z.string().optional().describe("Optional: datatype URI for literals"),
-            language: z.string().optional().describe("Optional: language tag for literals"),
-            isLiteral: z.boolean().optional().describe("Whether the object is a literal value")
-        })).describe("Array of RDF triples to add")
-    }, 
-    async ({ triples }) => {
-        try {
-            const addedTriples = await rdfKnowledgeGraphManager.addTriples(triples);
-            return {
-                content: [
-                    {
-                        type: "text",
-                        text: `Successfully added ${addedTriples.length} triples to the knowledge graph.`
-                    }
-                ],
-                data: {
-                    success: true,
-                    added: addedTriples.length,
-                    triples: addedTriples
-                }
-            };
-        } catch (error) {
-            return {
-                content: [
-                    {
-                        type: "text",
-                        text: `Error adding triples: ${error instanceof Error ? error.message : String(error)}`
-                    }
-                ],
-                data: {
-                    success: false,
-                    error: error instanceof Error ? error.message : String(error)
-                }
-            };
-        }
-    }
-);
-        
-// Method to query triples based on patterns
-rdfServer.tool(
-    "query-triples", 
-    "Query triples from the RDF knowledge graph based on a pattern", 
-    {
-        query: z.object({
-            subject: z.string().optional().describe("Subject pattern to match"),
-            predicate: z.string().optional().describe("Predicate pattern to match"),
-            object: z.string().optional().describe("Object pattern to match"),
-            datatype: z.string().optional().describe("Datatype pattern to match"),
-            language: z.string().optional().describe("Language pattern to match"),
-            isLiteral: z.boolean().optional().describe("Whether the object is a literal")
-        }).describe("Query pattern to match triples")
-    }, 
-    async ({ query }) => {
-        try {
-            const results = await rdfKnowledgeGraphManager.queryTriples(query);
-            return {
-                content: [
-                    {
-                        type: "text",
-                        text: `Found ${results.length} matching triples.`
-                    }
-                ],
-                data: {
-                    success: true,
-                    count: results.length,
-                    results
-                }
-            };
-        } catch (error) {
-            return {
-                content: [
-                    {
-                        type: "text",
-                        text: `Error querying triples: ${error instanceof Error ? error.message : String(error)}`
-                    }
-                ],
-                data: {
-                    success: false,
-                    error: error instanceof Error ? error.message : String(error)
-                }
-            };
-        }
-    }
-);
 // Define all MCP servers
 const SERVERS: StdioServerParameters[] = [
 	{command: "npx", args: ["-y", "@modelcontextprotocol/server-filesystem", join(homedir(), "Desktop")], env: { MCP_FILESYSTEM_ROOT: DESKTOP_PATH, MCP_FILESYSTEM_DEFAULT_PATH: DESKTOP_PATH}},
 	//{command: "npx", args: ["@playwright/mcp@latest"]},
 	//{command: "npx", args: ["-y", "@modelcontextprotocol/server-memory", join(homedir(), "databases")], env: { MCP_SQLITE_DEFAULT_DB_PATH: join(homedir(), "databases"), MCP_SQLITE_ALLOW_WRITE: "true"}},
-    // Add our custom RDF server
-    //{server: rdfServer.server}
 ];
 
 
 async function main() {
-    try {
-        // Get and print all triples
-        console.log("All triples in the store:");
-        const allTriples = await rdfKnowledgeGraphManager.getAllTriples();
-        for (const triple of allTriples) {
-            console.log(triple);
-        }
-    } catch (error) {
-        console.error('Error:', error);
-    }
-
     const agent = new Agent(
 		BASE_URL
 			? {endpointUrl: BASE_URL, model: MODEL_ID, apiKey: TOKEN, servers: SERVERS}
@@ -245,3 +126,4 @@ main().catch(error => {
     console.error('Unhandled error:', error);
     process.exit(1);
 });
+*/

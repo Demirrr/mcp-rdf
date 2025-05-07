@@ -23,6 +23,8 @@
   "dependencies": {
     "@huggingface/inference": "^3.12.0",
     "@modelcontextprotocol/sdk": "^1.10.2",
-    "dotenv": "^16.5.0"
+    "@types/socket.io": "^3.0.1",
+    "dotenv": "^16.5.0",
+    "socket.io": "^4.8.1"
   }
 }

@@ -1,37 +1,22 @@
 import path from 'path';
 import { promises as fs } from 'fs';
-
-// Define memory file path using environment variable with fallback
-const defaultMemoryPath = path.join(process.cwd(), 'rdf-store.jsonld');
-
-// If MEMORY_FILE_PATH is just a filename, put it in the current working directory
-const MEMORY_FILE_PATH = process.env.MEMORY_FILE_PATH
-  ? path.isAbsolute(process.env.MEMORY_FILE_PATH)
-    ? process.env.MEMORY_FILE_PATH
-    : path.join(process.cwd(), process.env.MEMORY_FILE_PATH)
-  : defaultMemoryPath;
-
-// RDF triples structure
-export interface Triple {
-  subject: string;
-  predicate: string;
-  object: string;
-  // Optional fields for more detailed RDF information
-  datatype?: string;
-  language?: string;
-  isLiteral?: boolean;
-}
-
-export interface RDFGraph {
-  triples: Triple[];
-  prefixes: Record<string, string>;
-}
+import { Triple } from './RDFKG';
+import { RDFGraph } from './RDFKG';
 
 // The RDFKnowledgeGraphManager class contains all operations to interact with the RDF knowledge graph
 export class RDFKnowledgeGraphManager {
-  private async loadGraph(): Promise<RDFGraph> {
+  private readonly memoryFilePath: string;
+
+  constructor(memoryFilePath: string) {
+    // If just a filename, put it in the current working directory
+    this.memoryFilePath = path.isAbsolute(memoryFilePath)
+      ? memoryFilePath
+      : path.join(process.cwd(), memoryFilePath);
+  }
+
+  public async loadGraph(): Promise<RDFGraph> {
     try {
-      const data = await fs.readFile(MEMORY_FILE_PATH, "utf-8");
+      const data = await fs.readFile(this.memoryFilePath, "utf-8");
       return JSON.parse(data) as RDFGraph;
     } catch (error) {
       if (error instanceof Error && 'code' in error && (error as any).code === "ENOENT") {
@@ -53,8 +38,8 @@ export class RDFKnowledgeGraphManager {
     }
   }
 
-  private async saveGraph(graph: RDFGraph): Promise<void> {
-    await fs.writeFile(MEMORY_FILE_PATH, JSON.stringify(graph, null, 2));
+  public async saveGraph(graph: RDFGraph): Promise<void> {
+    await fs.writeFile(this.memoryFilePath, JSON.stringify(graph, null, 2));
   }
 
   // Helper method to resolve prefixed names to full URIs
