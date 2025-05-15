@@ -7,17 +7,9 @@ import path from 'path';
 
 interface ClientSocket extends IOSocket {}
 
-interface VisualizationData {
-  nodes: any[];
-  edges: any[];
-}
+interface VisualizationData {nodes: any[];edges: any[];}
 
-interface GraphData {
-  triples: Triple[];
-  prefixes?: {
-    [key: string]: string
-  };
-}
+interface GraphData {triples: Triple[];prefixes?: {[key: string]: string};}
 
 export class RDFVisualizer {
   private io!: SocketIOServer;
@@ -44,18 +36,9 @@ export class RDFVisualizer {
       }
     });
 
-    this.io = new SocketIOServer(httpServer, {
-      cors: {
-        origin: '*',
-        methods: ['GET', 'POST']
-      }
-    });
-
+    this.io = new SocketIOServer(httpServer, {cors: {  origin: '*',methods: ['GET', 'POST']}});
     this.io.on('connection', this.handleSocketConnection);
-
-    httpServer.listen(this.port, () => {
-      console.log(`Visualization server running at http://localhost:${this.port}`);
-    });
+    httpServer.listen(this.port, () => {console.log(`Visualization server running at http://localhost:${this.port}`);});
   }
 
   private serveVisualizationHTML(res: ServerResponse) {
@@ -215,7 +198,8 @@ export class RDFVisualizer {
     graph.triples.forEach(triple => {
       if (triple.subject) prefixes.add(getPrefix(triple.subject));
       if (triple.predicate) prefixes.add(getPrefix(triple.predicate));
-      if (!triple.isLiteral && triple.object) prefixes.add(getPrefix(triple.object));
+      //if (!triple.isLiteral && triple.object) prefixes.add(getPrefix(triple.object));
+      if (triple.object) prefixes.add(getPrefix(triple.object));
     });
 
     return Array.from(prefixes);
@@ -232,7 +216,8 @@ export class RDFVisualizer {
         nodeMap.set(triple.subject, nodeIdCounter++);
         nodes.add(triple.subject);
       }
-      if (!triple.isLiteral && triple.object && !nodeMap.has(triple.object)) {
+      
+      if (triple.object && !nodeMap.has(triple.object)) {
         nodeMap.set(triple.object, nodeIdCounter++);
         nodes.add(triple.object);
       }
@@ -246,7 +231,7 @@ export class RDFVisualizer {
 
     graph.triples.forEach((triple, index) => {
       const fromId = nodeMap.get(triple.subject)!;
-      const toId = !triple.isLiteral && triple.object ? nodeMap.get(triple.object)! : undefined;
+      const toId = triple.object ? nodeMap.get(triple.object)! : undefined;
 
       if (toId !== undefined) {
         edges.push({

@@ -12,10 +12,9 @@ visualizer.initialize();
 rdfManager.readGraph().then(graph => {
     console.log(graph);
 });
-*/
 
 
-/*
+
 import * as readline from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import { join } from "node:path";

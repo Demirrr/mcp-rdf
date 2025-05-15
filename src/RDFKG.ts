@@ -17,8 +17,8 @@ export interface Triple {
   predicate: string;
   object: string;
   // Optional fields for more detailed RDF information
-  datatype?: string;
-  language?: string;
-  isLiteral?: boolean;
+  //datatype?: string;
+  //language?: string;
+  //isLiteral?: boolean;
 }
 export interface RDFGraph {triples: Triple[]; prefixes: Record<string, string>;}

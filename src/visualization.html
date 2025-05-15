@@ -73,18 +73,16 @@
   <div class="controls">
     <h3>Add New Triple</h3>
     <div class="input-group">
-      <input type="text" id="subject" placeholder="e.g., http://example.org/resource1">
       <label for="subject">Subject:</label>
+      <input type="text" id="subject" placeholder="resource1">
     </div>
     <div class="input-group">
-      <input type="text" id="predicate" placeholder="e.g., http://example.org/ontology/knows">
       <label for="predicate">Predicate:</label>
+      <input type="text" id="predicate" placeholder="knows">
     </div>
     <div class="input-group">
-      <input type="text" id="object" placeholder="e.g., http://example.org/resource2 or 'Literal Value'">
       <label for="object">Object:</label>
-      <input type="checkbox" id="isLiteral">
-      <label for="isLiteral">Literal</label>
+      <input type="text" id="object" placeholder="resource2">
     </div>
     <button onclick="addTriple()">Add Triple</button>
     <button id="downloadButton" onclick="downloadGraph()">Download Graph (JSON)</button>
@@ -136,14 +134,14 @@
       const subject = document.getElementById('subject').value;
       const predicate = document.getElementById('predicate').value;
       const object = document.getElementById('object').value;
-      const isLiteral = document.getElementById('isLiteral').checked;
+      //const isLiteral = document.getElementById('isLiteral').checked;
 
       if (!subject || !predicate || !object) {
         alert('Please fill in all triple fields.');
         return;
       }
 
-      const newTriple = { subject: subject, predicate: predicate, object: object, isLiteral: isLiteral };
+      const newTriple = { subject: subject, predicate: predicate, object: object};
 
       // Send the new triple to the server via WebSocket
       socket.emit('addTriple', newTriple);
@@ -152,7 +150,7 @@
       document.getElementById('subject').value = '';
       document.getElementById('predicate').value = '';
       document.getElementById('object').value = '';
-      document.getElementById('isLiteral').checked = false;
+      //  document.getElementById('isLiteral').checked = false;
     }
 
     function downloadGraph() {

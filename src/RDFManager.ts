@@ -8,10 +8,7 @@ export class RDFKnowledgeGraphManager {
   private readonly memoryFilePath: string;
 
   constructor(memoryFilePath: string) {
-    // If just a filename, put it in the current working directory
-    this.memoryFilePath = path.isAbsolute(memoryFilePath)
-      ? memoryFilePath
-      : path.join(process.cwd(), memoryFilePath);
+    this.memoryFilePath = path.isAbsolute(memoryFilePath) ? memoryFilePath : path.join(process.cwd(), memoryFilePath);
   }
 
   public async loadGraph(): Promise<RDFGraph> {
@@ -55,10 +52,11 @@ export class RDFKnowledgeGraphManager {
     return (
       a.subject === b.subject &&
       a.predicate === b.predicate &&
-      a.object === b.object &&
-      a.datatype === b.datatype &&
-      a.language === b.language &&
-      a.isLiteral === b.isLiteral
+      a.object === b.object 
+      // &&
+      //a.datatype === b.datatype &&
+      //a.language === b.language &&
+      //a.isLiteral === b.isLiteral
     );
   }
 
@@ -70,7 +68,8 @@ export class RDFKnowledgeGraphManager {
       ...triple,
       subject: this.resolveURI(triple.subject, graph.prefixes),
       predicate: this.resolveURI(triple.predicate, graph.prefixes),
-      object: triple.isLiteral ? triple.object : this.resolveURI(triple.object, graph.prefixes)
+      //object: triple.isLiteral ? triple.object : this.resolveURI(triple.object, graph.prefixes)
+      object: this.resolveURI(triple.object, graph.prefixes)
     }));
     
     // Filter out triples that already exist
@@ -91,7 +90,8 @@ export class RDFKnowledgeGraphManager {
       ...pattern,
       subject: pattern.subject ? this.resolveURI(pattern.subject, graph.prefixes) : undefined,
       predicate: pattern.predicate ? this.resolveURI(pattern.predicate, graph.prefixes) : undefined,
-      object: pattern.object && !pattern.isLiteral ? this.resolveURI(pattern.object, graph.prefixes) : pattern.object
+      //object: pattern.object && !pattern.isLiteral ? this.resolveURI(pattern.object, graph.prefixes) : pattern.object
+      object: pattern.object ? this.resolveURI(pattern.object, graph.prefixes) : undefined,
     }));
 
     const initialCount = graph.triples.length;
@@ -101,10 +101,11 @@ export class RDFKnowledgeGraphManager {
       !expandedPatterns.some(pattern => 
         (!pattern.subject || triple.subject === pattern.subject) &&
         (!pattern.predicate || triple.predicate === pattern.predicate) &&
-        (!pattern.object || triple.object === pattern.object) &&
-        (pattern.isLiteral === undefined || triple.isLiteral === pattern.isLiteral) &&
-        (pattern.datatype === undefined || triple.datatype === pattern.datatype) &&
-        (pattern.language === undefined || triple.language === pattern.language)
+        (!pattern.object || triple.object === pattern.object) 
+        // &&
+        //(pattern.isLiteral === undefined || triple.isLiteral === pattern.isLiteral) &&
+        //(pattern.datatype === undefined || triple.datatype === pattern.datatype) &&
+        //(pattern.language === undefined || triple.language === pattern.language)
       )
     );
     
@@ -148,20 +149,22 @@ export class RDFKnowledgeGraphManager {
     const expandedQuery = {
       subject: query.subject ? this.resolveURI(query.subject, graph.prefixes) : undefined,
       predicate: query.predicate ? this.resolveURI(query.predicate, graph.prefixes) : undefined,
-      object: query.object && !query.isLiteral ? this.resolveURI(query.object, graph.prefixes) : query.object,
-      isLiteral: query.isLiteral,
-      datatype: query.datatype,
-      language: query.language
+      //object: query.object && !query.isLiteral ? this.resolveURI(query.object, graph.prefixes) : query.object,
+      object: query.object ? this.resolveURI(query.object, graph.prefixes) : undefined,
+      //isLiteral: query.isLiteral,
+      //datatype: query.datatype,
+      //language: query.language
     };
 
     // Filter triples based on the query
     return graph.triples.filter(triple => 
       (!expandedQuery.subject || triple.subject === expandedQuery.subject) &&
       (!expandedQuery.predicate || triple.predicate === expandedQuery.predicate) &&
-      (!expandedQuery.object || triple.object === expandedQuery.object) &&
-      (expandedQuery.isLiteral === undefined || triple.isLiteral === expandedQuery.isLiteral) &&
-      (expandedQuery.datatype === undefined || triple.datatype === expandedQuery.datatype) &&
-      (expandedQuery.language === undefined || triple.language === expandedQuery.language)
+      (!expandedQuery.object || triple.object === expandedQuery.object) 
+      // &&
+      //(expandedQuery.isLiteral === undefined || triple.isLiteral === expandedQuery.isLiteral) &&
+      //(expandedQuery.datatype === undefined || triple.datatype === expandedQuery.datatype) &&
+      //(expandedQuery.language === undefined || triple.language === expandedQuery.language)
     );
   }
 
@@ -185,13 +188,14 @@ export class RDFKnowledgeGraphManager {
       const predicate = `<${triple.predicate}>`;
       
       let object;
-      if (triple.isLiteral) {
+      //if (triple.isLiteral) {
+      if (triple.object.includes('"') || triple.object.includes('.')) {
         object = `"${triple.object}"`;
-        if (triple.datatype) {
-          object += `^^<${triple.datatype}>`;
-        } else if (triple.language) {
-          object += `@${triple.language}`;
-        }
+        //if (triple.datatype) {
+        //  object += `^^<${triple.datatype}>`;
+        //} else if (triple.language) {
+        //  object += `@${triple.language}`;
+        //}
       } else {
         object = triple.object.startsWith('_:') 
           ? triple.object 
