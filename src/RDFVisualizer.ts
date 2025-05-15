@@ -9,8 +9,6 @@ interface ClientSocket extends IOSocket {}
 
 interface VisualizationData {nodes: any[];edges: any[];}
 
-interface GraphData {triples: Triple[];prefixes?: {[key: string]: string};}
-
 export class RDFVisualizer {
   private io!: SocketIOServer;
   private graphManager: RDFKnowledgeGraphManager;
@@ -45,9 +43,7 @@ export class RDFVisualizer {
     try {
       const htmlTemplate = readFileSync(this.templatePath, 'utf8');
       const replacedHTML = htmlTemplate.replace('${this.port}', this.port.toString());
-      res.writeHead(200, {
-        'Content-Type': 'text/html'
-      });
+      res.writeHead(200, {'Content-Type': 'text/html'});
       res.end(replacedHTML);
     } catch (error) {
       console.error('Error reading template file:', error);
@@ -73,69 +69,45 @@ export class RDFVisualizer {
   private async handleFileUpload(req: IncomingMessage, res: ServerResponse) {
     let body = '';
     try {
-      for await (const chunk of req) {
-        body += chunk.toString();
-      }
-      const graph: GraphData = JSON.parse(body);
-      const graphWithPrefixes: RDFGraph = {
-        ...graph};
-      await this.graphManager.saveGraph(graphWithPrefixes);
+      for await (const chunk of req) { body += chunk.toString(); }
+      const graph: RDFGraph = JSON.parse(body);
+      await this.graphManager.saveGraph(graph);
       const visualizationData = this.convertToVisualization(graph);
       this.io.emit('graphData', visualizationData);
-      res.writeHead(200, {
-        'Content-Type': 'application/json'
-      });
-      res.end(JSON.stringify({
-        success: true
-      }));
+      res.writeHead(200, { 'Content-Type': 'application/json'});
+      res.end(JSON.stringify({success: true}));
     } catch (error) {
       console.error('Error processing uploaded file:', error);
       res.writeHead(400, {
         'Content-Type': 'application/json'
       });
-      res.end(JSON.stringify({
-        error: 'Invalid JSON-LD file format'
-      }));
+      res.end(JSON.stringify({error: 'Invalid JSON-LD file format'}));
     }
   }
 
   private async handleAddTripleRequest(req: IncomingMessage, res: ServerResponse) {
     let body = '';
     try {
-      for await (const chunk of req) {
-        body += chunk.toString();
-      }
+      for await (const chunk of req) {body += chunk.toString();}
       const newTriple: Triple = JSON.parse(body);
       const graph = await this.graphManager.readGraph();
       graph.triples.push(newTriple);
       await this.graphManager.saveGraph(graph);
-      this.fetchAndSendGraphData(this.io); // Update all clients
-      res.writeHead(200, {
-        'Content-Type': 'application/json'
-      });
-      res.end(JSON.stringify({
-        success: true,
-        message: 'Triple added successfully'
-      }));
+      this.fetchAndSendGraphData(this.io);
+      res.writeHead(200, {'Content-Type': 'application/json'});
+      res.end(JSON.stringify({success: true, message: 'Triple added successfully' }));
     } catch (error) {
       console.error('Error adding triple via HTTP:', error);
-      res.writeHead(400, {
-        'Content-Type': 'application/json'
-      });
-      res.end(JSON.stringify({
-        error: 'Invalid triple format'
-      }));
+      res.writeHead(400, {'Content-Type': 'application/json'});
+      res.end(JSON.stringify({ error: 'Invalid triple format'}));
     }
   }
 
-  private handleNotFound(res: ServerResponse) {
-    res.writeHead(404);
-    res.end('Not found');
-  }
+  private handleNotFound(res: ServerResponse) { res.writeHead(404); res.end('Not found'); }
 
   private handleSocketConnection = (socket: ClientSocket) => {
     console.log('Client connected:', socket.id);
-    this.sendInitialGraphData(socket);
+    this.fetchAndSendGraphData(socket)
 
     socket.on('requestGraph', async () => {
       console.log('Client requested graph:', socket.id);
@@ -162,11 +134,10 @@ export class RDFVisualizer {
 
   private async fetchAndSendGraphData(emitter: SocketIOServer | ClientSocket) {
     try {
-      const graph = await this.graphManager.readGraph();
+      const graph:RDFGraph = await this.graphManager.readGraph();
       const visualizationData = this.convertToVisualization(graph);
       emitter.emit('graphData', visualizationData);
-      const prefixes = this.extractPrefixes(graph);
-      emitter.emit('prefixes', prefixes);
+
     } catch (error) {
       console.error('Error fetching and sending graph data:', error);
       if (emitter instanceof IOSocket) {
@@ -177,33 +148,7 @@ export class RDFVisualizer {
     }
   }
 
-  private async sendInitialGraphData(socket: ClientSocket) {
-    await this.fetchAndSendGraphData(socket);
-  }
-
-  private extractPrefixes(graph: GraphData): string[] {
-    const prefixes = new Set < string > ();
-
-    if (graph.prefixes) {
-      Object.values(graph.prefixes).forEach(prefix => prefixes.add(prefix));
-    }
-
-    const getPrefix = (iri: string) => {
-      const match = iri.match(/^(http[s]?:\/\/[^\/]+)\/|:(.*)$/);
-      return match ? (match[1] || match[2]) : '';
-    };
-
-    graph.triples.forEach(triple => {
-      if (triple.subject) prefixes.add(getPrefix(triple.subject));
-      if (triple.predicate) prefixes.add(getPrefix(triple.predicate));
-      //if (!triple.isLiteral && triple.object) prefixes.add(getPrefix(triple.object));
-      if (triple.object) prefixes.add(getPrefix(triple.object));
-    });
-
-    return Array.from(prefixes);
-  }
-
-  private convertToVisualization(graph: GraphData): VisualizationData {
+  private convertToVisualization(graph: RDFGraph): VisualizationData {
     const nodes = new Set < string > ();
     const edges: any[] = [];
     const nodeMap = new Map < string, number > ();

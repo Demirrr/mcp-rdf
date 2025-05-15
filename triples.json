@@ -1,0 +1,34 @@
+{
+  "triples": [
+    {
+      "subject": "Paderborn",
+      "predicate": "isa",
+      "object": "City"
+    },
+    {
+      "subject": "Dormund",
+      "predicate": "isa",
+      "object": "City"
+    },
+    {
+      "subject": "Germany",
+      "predicate": "isa",
+      "object": "Country"
+    },
+    {
+      "subject": "NRW",
+      "predicate": "isa",
+      "object": "Region"
+    },
+    {
+      "subject": "Paderborn",
+      "predicate": "isin",
+      "object": "NRW"
+    },
+    {
+      "subject": "Dormund",
+      "predicate": "isin",
+      "object": "NRW"
+    }
+  ]
+}

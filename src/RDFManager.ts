@@ -5,9 +5,9 @@ import { RDFGraph } from './RDFKG';
 
 export class RDFKnowledgeGraphManager {
   private readonly memoryFilePath: string;
+
   constructor(memoryFilePath: string) {
     this.memoryFilePath = path.isAbsolute(memoryFilePath) ? memoryFilePath : path.join(process.cwd(), memoryFilePath);}
-
 
   public async saveGraph(graph: RDFGraph): Promise<void> {await fs.writeFile(this.memoryFilePath, JSON.stringify(graph, null, 2));}
 
