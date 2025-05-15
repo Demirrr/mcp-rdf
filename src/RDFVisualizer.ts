@@ -78,9 +78,7 @@ export class RDFVisualizer {
       }
       const graph: GraphData = JSON.parse(body);
       const graphWithPrefixes: RDFGraph = {
-        ...graph,
-        prefixes: graph.prefixes || {}
-      };
+        ...graph};
       await this.graphManager.saveGraph(graphWithPrefixes);
       const visualizationData = this.convertToVisualization(graph);
       this.io.emit('graphData', visualizationData);

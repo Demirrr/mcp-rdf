@@ -12,13 +12,6 @@ const MEMORY_FILE_PATH = process.env.MEMORY_FILE_PATH
   : defaultMemoryPath;
 
 // RDF triples structure
-export interface Triple {
-  subject: string;
-  predicate: string;
-  object: string;
-  // Optional fields for more detailed RDF information
-  //datatype?: string;
-  //language?: string;
-  //isLiteral?: boolean;
+export interface Triple {subject: string; predicate: string; object: string;
 }
-export interface RDFGraph {triples: Triple[]; prefixes: Record<string, string>;}
+export interface RDFGraph {triples: Triple[];}
