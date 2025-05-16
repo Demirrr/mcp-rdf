@@ -1,5 +1,4 @@
-import { RDFKnowledgeGraphManager } from './RDFManager';
-import { Triple, RDFGraph } from './RDFKG';
+import { RDFKnowledgeGraphManager, Triple, RDFGraph } from './RDFManager';
 import { createServer, IncomingMessage, ServerResponse } from 'http';
 import { Server as SocketIOServer, Socket as IOSocket } from 'socket.io';
 import { readFileSync } from 'fs';
@@ -19,6 +18,12 @@ export class RDFVisualizer {
     this.graphManager = graphManager;
     this.port = port;
     this.templatePath = path.resolve(templatePath);
+
+    this.graphManager.readGraph().then(graph => {
+      graph.triples.forEach(triple => {
+        console.log(triple);
+      });
+    });
   }
 
   async initialize() {
