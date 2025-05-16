@@ -93,6 +93,9 @@
       <input type="range" id="tripleSlider" min="1" max="100" value="1" style="width: 150px;">
       <span id="tripleCount">100</span>
     </div>
+    <div class="input-group" style="margin-top: 10px;">
+      <button id="typeFilterButton" onclick="toggleTypeFilter()" style="width: 100%;">Show Only Type/Subclass</button>
+    </div>
   </div>
   <script type="text/javascript">
     const nodes = new vis.DataSet([]);
@@ -100,13 +103,15 @@
     const container = document.getElementById('mynetwork');
     const data = { nodes: nodes, edges: edges };
     const options = {
-      nodes: { shape: 'dot', size: 15, font: { size: 14 } },
-      edges: { font: { size: 14, align: 'middle' }, color: 'gray', arrows: { to: true }, smooth: false, width: 2 },
-      physics: { enabled: true, barnesHut: { gravitationalConstant: -2000, centralGravity: 0.3, springLength: 95, springConstant: 0.04 }, minVelocity: 0.75 }
+      nodes: { shape: 'dot', size: 15, font: { size: 14 },
+        color: { background: '#97C2FC', border: '#2B7CE9', highlight: {background: '#D2E5FF', border: '#2B7CE9' }}},
+        edges: { font: { size: 14, align: 'middle' }, color: 'gray', arrows: { to: true }, smooth: false, width: 2 },
+        physics: { enabled: true, barnesHut: { gravitationalConstant: -2000, centralGravity: 0.3, springLength: 95, springConstant: 0.04 }, minVelocity: 0.75 }
     };
     const network = new vis.Network(container, data, options);
-    const socket = io(`http://localhost:${window.location.port}`); // Use dynamic port
-    let currentGraphData = null; // Store the complete graph data
+    const socket = io(`http://localhost:${window.location.port}`);
+    let currentGraphData = null;
+    let showOnlyTypeTriples = false;
 
     document.getElementById('fileInput').addEventListener('change', async function(event) {
       const file = event.target.files[0];
@@ -131,39 +136,82 @@
       }
     });
 
-    function updateVisualization(data, maxTriples) {
+    function toggleTypeFilter() {
+      showOnlyTypeTriples = !showOnlyTypeTriples;
+      const button = document.getElementById('typeFilterButton');
+      button.textContent = showOnlyTypeTriples ? 'Show All Triples' : 'Show Only Type/Subclass';
+      button.style.backgroundColor = showOnlyTypeTriples ? '#FF6B6B' : '#4CAF50';
+      
+      if (currentGraphData) {
+        const sliderValue = document.getElementById('tripleSlider').value;
+        updateVisualization(currentGraphData, sliderValue);
+      }
+    }
+
+    function updateVisualization(data, maxTriplesRatio) {
       nodes.clear();
       edges.clear();
-      
+
+      // Filter edges based on type filter
+      let filteredEdges = data.edges;
+      if (showOnlyTypeTriples) {
+        filteredEdges = data.edges.filter(edge => edge.label === 'rdfs:subClassOf');
+      }
+
       // Calculate how many triples to show based on the slider value
-      const totalTriples = data.edges.length;
-      const triplesToShow = Math.max(1, Math.floor((maxTriples / 100) * totalTriples));
-      
+      const totalTriples = filteredEdges.length;
+      const triplesToShow = Math.max(1, Math.floor((maxTriplesRatio / 100) * totalTriples));
       // Get the first N triples
-      const limitedEdges = data.edges.slice(0, triplesToShow);
-      
+      const limitedEdges = filteredEdges.slice(0, triplesToShow);
+
       // Get all unique nodes from the limited edges
       const nodeIds = new Set();
       limitedEdges.forEach(edge => {
         nodeIds.add(edge.from);
         nodeIds.add(edge.to);
       });
-      
-      // Add only the nodes that are part of the limited edges
-      const limitedNodes = data.nodes.filter(node => nodeIds.has(node.id));
-      
+
+      // Find nodes that occur with rdfs:subClassOf relationships
+      const subclassNodeIds = new Set();
+      data.edges.forEach(edge => {
+        if (edge.label === 'rdfs:subClassOf') {
+          subclassNodeIds.add(edge.from);
+          subclassNodeIds.add(edge.to);
+        }
+      });
+
+      // Filter the original nodes based on the nodeIds present in the limited edges
+      // and apply coloring based on whether the node is in subclassNodeIds
+      const limitedNodes = data.nodes
+        .filter(node => nodeIds.has(node.id)) // Only include nodes that are part of the visualized edges
+        .map(node => {
+          const isSubclassNode = subclassNodeIds.has(node.id);
+          return {
+            ...node,
+            color: isSubclassNode
+              ? { // Red color for nodes involved in subclass relationships
+                  background: '#FF6B6B',
+                  border: '#FF0000',
+                  highlight: { background: '#FFB6B6', border: '#FF0000' }
+                }
+              : { // Default blue color for other nodes
+                  background: '#97C2FC',
+                  border: '#2B7CE9',
+                  highlight: { background: '#D2E5FF', border: '#2B7CE9' }
+                }
+          };
+        });
+
+      // Add nodes first, then edges to ensure all referenced nodes exist
       nodes.add(limitedNodes);
       edges.add(limitedEdges);
+
       network.fit();
     }
 
-    socket.on('connect', () => {
-      console.log('Connected to WebSocket');
-      socket.emit('requestGraph');
-    });
-
+    socket.on('connect', () => { console.log('Connected to WebSocket'); socket.emit('requestGraph'); });
     socket.on('graphData', function(data) {
-      currentGraphData = data; // Store the complete data
+      currentGraphData = data;
       const sliderValue = document.getElementById('tripleSlider').value;
       updateVisualization(data, sliderValue);
     });
@@ -172,7 +220,6 @@
       const subject = document.getElementById('subject').value;
       const predicate = document.getElementById('predicate').value;
       const object = document.getElementById('object').value;
-      //const isLiteral = document.getElementById('isLiteral').checked;
 
       if (!subject || !predicate || !object) {
         alert('Please fill in all triple fields.');
