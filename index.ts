@@ -1,7 +1,7 @@
 import { RDFKnowledgeGraphManager } from "./src/RDFManager";
 import { RDFVisualizer } from "./src/RDFVisualizer";
 
-const local_path_of_kg = "/home/cdemir/Desktop/Softwares/owlapy/KGs/Family/inferred_family-benchmark_rich_background.ttl";
+const local_path_of_kg = "inferred_family-benchmark_rich_background.ttl";
 
 
 const rdfManager = new RDFKnowledgeGraphManager(local_path_of_kg);
