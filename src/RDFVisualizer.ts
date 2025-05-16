@@ -1,26 +1,29 @@
-import { RDFKnowledgeGraphManager } from './RDFManager';
-import { Triple, RDFGraph } from './RDFKG';
+import { RDFKnowledgeGraphManager, Triple, RDFGraph } from './RDFManager';
 import { createServer, IncomingMessage, ServerResponse } from 'http';
 import { Server as SocketIOServer, Socket as IOSocket } from 'socket.io';
 import { readFileSync } from 'fs';
 import path from 'path';
+import OpenAI from 'openai';
 
 interface ClientSocket extends IOSocket {}
 
 interface VisualizationData {nodes: any[];edges: any[];}
-
-interface GraphData {triples: Triple[];prefixes?: {[key: string]: string};}
 
 export class RDFVisualizer {
   private io!: SocketIOServer;
   private graphManager: RDFKnowledgeGraphManager;
   private port: number;
   private templatePath: string;
+  private openai: OpenAI;
 
   constructor(graphManager: RDFKnowledgeGraphManager, port: number = 3000, templatePath: string = './vs.html') {
     this.graphManager = graphManager;
     this.port = port;
     this.templatePath = path.resolve(templatePath);
+    this.openai = new OpenAI({
+      apiKey: "token-tentris-upb",
+      baseURL: "http://harebell.cs.upb.de:8501/v1"
+    });
   }
 
   async initialize() {
@@ -31,6 +34,8 @@ export class RDFVisualizer {
         await this.handleFileUpload(req, res);
       } else if (req.url === '/addTriple' && req.method === 'POST') {
         await this.handleAddTripleRequest(req, res);
+      } else if (req.url === '/chat' && req.method === 'POST') {
+        await this.handleChatRequest(req, res);
       } else {
         this.handleNotFound(res);
       }
@@ -45,9 +50,7 @@ export class RDFVisualizer {
     try {
       const htmlTemplate = readFileSync(this.templatePath, 'utf8');
       const replacedHTML = htmlTemplate.replace('${this.port}', this.port.toString());
-      res.writeHead(200, {
-        'Content-Type': 'text/html'
-      });
+      res.writeHead(200, {'Content-Type': 'text/html'});
       res.end(replacedHTML);
     } catch (error) {
       console.error('Error reading template file:', error);
@@ -73,71 +76,130 @@ export class RDFVisualizer {
   private async handleFileUpload(req: IncomingMessage, res: ServerResponse) {
     let body = '';
     try {
-      for await (const chunk of req) {
-        body += chunk.toString();
-      }
-      const graph: GraphData = JSON.parse(body);
-      const graphWithPrefixes: RDFGraph = {
-        ...graph,
-        prefixes: graph.prefixes || {}
-      };
-      await this.graphManager.saveGraph(graphWithPrefixes);
+      for await (const chunk of req) { body += chunk.toString(); }
+      const graph: RDFGraph = JSON.parse(body);
+      await this.graphManager.saveGraph(graph);
       const visualizationData = this.convertToVisualization(graph);
       this.io.emit('graphData', visualizationData);
-      res.writeHead(200, {
-        'Content-Type': 'application/json'
-      });
-      res.end(JSON.stringify({
-        success: true
-      }));
+      res.writeHead(200, { 'Content-Type': 'application/json'});
+      res.end(JSON.stringify({success: true}));
     } catch (error) {
       console.error('Error processing uploaded file:', error);
       res.writeHead(400, {
         'Content-Type': 'application/json'
       });
-      res.end(JSON.stringify({
-        error: 'Invalid JSON-LD file format'
-      }));
+      res.end(JSON.stringify({error: 'Invalid JSON-LD file format'}));
     }
   }
 
   private async handleAddTripleRequest(req: IncomingMessage, res: ServerResponse) {
     let body = '';
     try {
-      for await (const chunk of req) {
-        body += chunk.toString();
-      }
+      for await (const chunk of req) {body += chunk.toString();}
       const newTriple: Triple = JSON.parse(body);
       const graph = await this.graphManager.readGraph();
       graph.triples.push(newTriple);
       await this.graphManager.saveGraph(graph);
-      this.fetchAndSendGraphData(this.io); // Update all clients
-      res.writeHead(200, {
-        'Content-Type': 'application/json'
-      });
-      res.end(JSON.stringify({
-        success: true,
-        message: 'Triple added successfully'
-      }));
+      this.fetchAndSendGraphData(this.io);
+      res.writeHead(200, {'Content-Type': 'application/json'});
+      res.end(JSON.stringify({success: true, message: 'Triple added successfully' }));
     } catch (error) {
       console.error('Error adding triple via HTTP:', error);
-      res.writeHead(400, {
-        'Content-Type': 'application/json'
-      });
-      res.end(JSON.stringify({
-        error: 'Invalid triple format'
-      }));
+      res.writeHead(400, {'Content-Type': 'application/json'});
+      res.end(JSON.stringify({ error: 'Invalid triple format'}));
     }
   }
 
-  private handleNotFound(res: ServerResponse) {
-    res.writeHead(404);
-    res.end('Not found');
+  private async handleChatRequest(req: IncomingMessage, res: ServerResponse) {
+    let body = '';
+    try {
+      for await (const chunk of req) {
+        body += chunk.toString();
+      }
+      const { message, currentGraphData, functions } = JSON.parse(body);
+
+      const completion = await this.openai.chat.completions.create({
+        model: "tentris",
+        messages: [
+          {
+            role: "system",
+            content: `You are an AI assistant that helps users interact with an RDF graph visualization. 
+            You can help users understand the graph structure, add new triples, and modify the visualization settings.`
+          },
+          {
+            role: "user",
+            content: message
+          }
+        ],
+        functions: functions,
+        function_call: "auto"
+      });
+
+      const response = completion.choices[0].message;
+      console.debug(response);
+      console.debug(response.tool_calls);
+      for (let i in functions) {
+        console.debug(functions[i]);
+      }
+      // @TODO: Handle function calls
+      // Handle function calls
+      if (response.function_call) {
+        const functionName = response.function_call.name;
+        const args = JSON.parse(response.function_call.arguments);
+        let result;
+
+        switch (functionName) {
+          case 'addTriple':
+            const graph = await this.graphManager.readGraph();
+            graph.triples.push(args);
+            await this.graphManager.saveGraph(graph);
+            this.fetchAndSendGraphData(this.io);
+            result = { success: true, message: 'Triple added successfully' };
+            break;
+
+          case 'setMaxTriplesRatio':
+            result = { success: true, message: `Triple ratio set to ${args.ratio}%` };
+            break;
+
+          case 'countTriples':
+            const count = currentGraphData.edges.filter((edge: { from: number; to: number; label: string }) => {
+              const node = currentGraphData.nodes.find((n: { id: number; label: string }) => n.id === edge.from || n.id === edge.to);
+              return node.label.includes(args.nodeOrRelation) || edge.label.includes(args.nodeOrRelation);
+            }).length;
+            result = { 
+              success: true, 
+              count: count,
+              message: `Found ${count} triples involving "${args.nodeOrRelation}"`
+            };
+            break;
+
+          default:
+            result = { success: false, message: 'Unknown function' };
+        }
+
+        // Send the function result back to the client
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          ...response,
+          function_result: result
+        }));
+      } else {
+        // Regular text response
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(response));
+      }
+    } catch (error) {
+      console.error('Error processing chat request:', error);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to process chat request' }));
+    }
   }
+
+  private handleNotFound(res: ServerResponse) { res.writeHead(404); res.end('Not found'); }
 
   private handleSocketConnection = (socket: ClientSocket) => {
     console.log('Client connected:', socket.id);
-    this.sendInitialGraphData(socket);
+    this.fetchAndSendGraphData(socket)
 
     socket.on('requestGraph', async () => {
       console.log('Client requested graph:', socket.id);
@@ -164,11 +226,10 @@ export class RDFVisualizer {
 
   private async fetchAndSendGraphData(emitter: SocketIOServer | ClientSocket) {
     try {
-      const graph = await this.graphManager.readGraph();
+      const graph:RDFGraph = await this.graphManager.readGraph();
       const visualizationData = this.convertToVisualization(graph);
       emitter.emit('graphData', visualizationData);
-      const prefixes = this.extractPrefixes(graph);
-      emitter.emit('prefixes', prefixes);
+
     } catch (error) {
       console.error('Error fetching and sending graph data:', error);
       if (emitter instanceof IOSocket) {
@@ -179,63 +240,28 @@ export class RDFVisualizer {
     }
   }
 
-  private async sendInitialGraphData(socket: ClientSocket) {
-    await this.fetchAndSendGraphData(socket);
-  }
-
-  private extractPrefixes(graph: GraphData): string[] {
-    const prefixes = new Set < string > ();
-
-    if (graph.prefixes) {
-      Object.values(graph.prefixes).forEach(prefix => prefixes.add(prefix));
-    }
-
-    const getPrefix = (iri: string) => {
-      const match = iri.match(/^(http[s]?:\/\/[^\/]+)\/|:(.*)$/);
-      return match ? (match[1] || match[2]) : '';
-    };
-
-    graph.triples.forEach(triple => {
-      if (triple.subject) prefixes.add(getPrefix(triple.subject));
-      if (triple.predicate) prefixes.add(getPrefix(triple.predicate));
-      //if (!triple.isLiteral && triple.object) prefixes.add(getPrefix(triple.object));
-      if (triple.object) prefixes.add(getPrefix(triple.object));
-    });
-
-    return Array.from(prefixes);
-  }
-
-  private convertToVisualization(graph: GraphData): VisualizationData {
+  private convertToVisualization(graph: RDFGraph): VisualizationData {
     const nodes = new Set < string > ();
     const edges: any[] = [];
     const nodeMap = new Map < string, number > ();
     let nodeIdCounter = 0;
 
     graph.triples.forEach(triple => {
-      if (!nodeMap.has(triple.subject)) {
-        nodeMap.set(triple.subject, nodeIdCounter++);
-        nodes.add(triple.subject);
-      }
+
+      if (!nodeMap.has(triple.subject)) {nodeMap.set(triple.subject, nodeIdCounter++); nodes.add(triple.subject);}
       
-      if (triple.object && !nodeMap.has(triple.object)) {
-        nodeMap.set(triple.object, nodeIdCounter++);
-        nodes.add(triple.object);
-      }
+      if (triple.object && !nodeMap.has(triple.object)) { nodeMap.set(triple.object, nodeIdCounter++); nodes.add(triple.object);}
+
     });
 
-    const visNodes = Array.from(nodes).map(node => ({
-      id: nodeMap.get(node)!,
-      label: node,
-      shape: 'dot'
-    }));
+    const visNodes = Array.from(nodes).map(node => ({id: nodeMap.get(node)!, label: node, shape: 'dot'}));
 
     graph.triples.forEach((triple, index) => {
       const fromId = nodeMap.get(triple.subject)!;
       const toId = triple.object ? nodeMap.get(triple.object)! : undefined;
 
       if (toId !== undefined) {
-        edges.push({
-          id: `edge_${index}`,
+        edges.push({id: `edge_${index}`,
           from: fromId,
           to: toId,
           label: triple.predicate,

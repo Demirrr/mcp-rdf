@@ -1,83 +1,99 @@
-# MCP RDF Server
+# MCP-RDF
 
-A Model Context Protocol (MCP) server implementation for RDF Knowledge Graph.
+**Version:** 1.0.1  
+**Author:** cdemir  
+**License:** ISC
 
-## Installation
+## Description
 
-You can install the package globally via npm:
-
-```bash
-npm install -g mcp-rdf
-```
-
-## Running from Source
-
-### Prerequisites
-
-- Node.js (>= 18)
-- npm
-
-### Development Setup
-
-1. Clone the repository:
-```bash
-git clone https://github.com/Demirrr/mcp-rdf.git
-cd mcp-rdf
-```
-
-2. Install dependencies:
-```bash
-npm install --save-dev @types/node
-
-npm run build && npm start
-```
-
-## Using Pre-built Executables
-
-We provide pre-built executables for different platforms in the `bin` directory:
-
-- Linux: `bin/mcp-rdf-linux`
-- macOS: `bin/mcp-rdf-macos`
-- Windows: `bin/mcp-rdf-win.exe`
-
-### Running the Executables
-
-#### Linux
-```bash
-./bin/mcp-rdf-linux
-```
-
-#### macOS
-```bash
-./bin/mcp-rdf-macos
-```
-
-#### Windows
-```bash
-.\bin\mcp-rdf-win.exe
-```
-
-## Building Executables
-
-If you want to build the executables yourself:
-
-1. Install pkg globally:
-```bash
-npm install -g pkg
-```
-
-2. Build the executables:
-```bash
-pkg . --targets node18-linux-x64,node18-macos-x64,node18-win-x64 --output bin/mcp-rdf
-```
+MCP-RDF is a Node.js server that utilizes the Model Context Protocol (MCP) to manage and interact with RDF-based Knowledge Graphs. It integrates real-time communication through Socket.IO and leverages modern inference libraries such as HuggingFace for intelligent reasoning.
 
 ## Features
 
-- MCP server implementation for RDF Knowledge Graph
+- RDF Knowledge Graph support
+- Real-time communication with Socket.IO
+- HuggingFace inference integration
 - TypeScript support
-- Cross-platform executables
-- Easy to use CLI interface
+- Environment configuration with dotenv
+- Built using the Model Context Protocol SDK
 
-## License
+## Installation
 
-ISC 
+```bash
+# Clone the repository
+git clone https://github.com/Demirrr/mcp-rdf
+cd mcp-rdf
+
+# Install dependencies
+npm install
+```
+
+## Usage
+
+### Build
+
+Compile TypeScript source files:
+
+```bash
+npm run build
+```
+
+### Start
+
+Run the compiled server:
+
+```bash
+npm start
+```
+
+> Make sure to build the project before starting.
+
+## Environment Variables
+
+Create a `.env` file to configure environment variables required by the server:
+
+```env
+# Example:
+PORT=3000
+```
+
+## Project Structure
+
+```
+.
+├── src/              # TypeScript source files
+├── dist/             # Compiled JavaScript output
+├── .env              # Environment variables (not committed)
+├── package.json      # Project configuration
+├── tsconfig.json     # TypeScript configuration
+└── README.md         # Project documentation
+```
+
+## Dependencies
+
+### Runtime
+
+- [`@huggingface/inference`](https://www.npmjs.com/package/@huggingface/inference) - Inference API for machine learning models
+- [`@modelcontextprotocol/sdk`](https://www.npmjs.com/package/@modelcontextprotocol/sdk) - SDK for the Model Context Protocol
+- [`dotenv`](https://www.npmjs.com/package/dotenv) - Load environment variables
+- [`socket.io`](https://www.npmjs.com/package/socket.io) - Real-time communication library
+
+### Development
+
+- [`typescript`](https://www.npmjs.com/package/typescript) - TypeScript language support
+- [`@types/node`](https://www.npmjs.com/package/@types/node) - Node.js type definitions
+- [`@types/socket.io`](https://www.npmjs.com/package/@types/socket.io) - TypeScript definitions for Socket.IO
+
+## Scripts
+
+- `npm run build` – Compile TypeScript code into JavaScript (`dist/`)
+- `npm start` – Run the server from the compiled output
+- `npm test` – Placeholder for test scripts
+
+## Contributing
+
+Contributions are welcome! Please open an issue or submit a pull request.
+
+---
+
+© cdemir, 2025

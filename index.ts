@@ -1,11 +1,14 @@
 import { RDFKnowledgeGraphManager } from "./src/RDFManager";
 import { RDFVisualizer } from "./src/RDFVisualizer";
 
-const rdfManager = new RDFKnowledgeGraphManager("./rdf-store.jsonld");
-const visualizer = new RDFVisualizer(rdfManager, 4000, "./src/visualization.html");
+const local_path_of_kg = "inferred_family-benchmark_rich_background.ttl";
 
+
+const rdfManager = new RDFKnowledgeGraphManager(local_path_of_kg);
+const visualizer = new RDFVisualizer(rdfManager, 4000, "./src/visualization.html");
 // Initialize the visualization server
 visualizer.initialize();
+
 
 // Load and display initial graph
 /*
