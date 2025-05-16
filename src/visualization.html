@@ -66,11 +66,44 @@
     #downloadButton:hover {
       background-color: #0056b3;
     }
+    .search-container {
+      position: relative;
+      width: 100%;
+    }
+    .search-results {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      background: white;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      max-height: 200px;
+      overflow-y: auto;
+      z-index: 1001;
+      display: none;
+    }
+    .search-result-item {
+      padding: 8px;
+      cursor: pointer;
+      border-bottom: 1px solid #eee;
+    }
+    .search-result-item:hover {
+      background-color: #f0f0f0;
+    }
+    .search-result-item .highlight {
+      background-color: #ffeb3b;
+      padding: 2px;
+    }
   </style>
 </head>
 <body>
   <div id="mynetwork"></div>
   <div class="controls">
+    <div class="search-container">
+      <input type="text" id="searchInput" placeholder="Search nodes..." style="width: 100%;">
+      <div id="searchResults" class="search-results"></div>
+    </div>
     <h3>Add New Triple</h3>
     <div class="input-group">
       <label for="subject">Subject:</label>
@@ -112,6 +145,159 @@
     const socket = io(`http://localhost:${window.location.port}`);
     let currentGraphData = null;
     let showOnlyTypeTriples = false;
+
+    // Search functionality
+    const searchInput = document.getElementById('searchInput');
+    const searchResults = document.getElementById('searchResults');
+    let searchTimeout = null;
+
+    searchInput.addEventListener('input', function(e) {
+      const query = e.target.value.toLowerCase();
+      
+      // Clear previous timeout
+      if (searchTimeout) {
+        clearTimeout(searchTimeout);
+      }
+
+      // Hide results if query is empty
+      if (!query) {
+        searchResults.style.display = 'none';
+        return;
+      }
+
+      // Set a small delay to prevent too frequent updates
+      searchTimeout = setTimeout(() => {
+        if (!currentGraphData) return;
+
+        const results = [];
+        
+        // Search in nodes
+        currentGraphData.nodes.forEach(node => {
+          if (node.label.toLowerCase().includes(query)) {
+            results.push({
+              type: 'node',
+              id: node.id,
+              label: node.label
+            });
+          }
+        });
+
+        // Search in edges
+        currentGraphData.edges.forEach(edge => {
+          if (edge.label.toLowerCase().includes(query)) {
+            results.push({
+              type: 'edge',
+              id: edge.id,
+              label: edge.label,
+              from: edge.from,
+              to: edge.to
+            });
+          }
+        });
+
+        // Display results
+        if (results.length > 0) {
+          searchResults.innerHTML = results.map(result => {
+            const label = result.label;
+            const highlightedLabel = label.replace(
+              new RegExp(query, 'gi'),
+              match => `<span class="highlight">${match}</span>`
+            );
+            
+            return `
+              <div class="search-result-item" data-type="${result.type}" data-id="${result.id}">
+                ${result.type === 'node' ? '🔵' : '➡️'} ${highlightedLabel}
+              </div>
+            `;
+          }).join('');
+          
+          searchResults.style.display = 'block';
+        } else {
+          searchResults.style.display = 'none';
+        }
+      }, 150);
+    });
+
+    // Handle search result clicks
+    searchResults.addEventListener('click', function(e) {
+      const resultItem = e.target.closest('.search-result-item');
+      if (!resultItem) return;
+
+      const type = resultItem.dataset.type;
+      const id = resultItem.dataset.id;
+
+      if (type === 'node') {
+        // Filter to show only triples involving this node
+        const filteredData = {
+          nodes: currentGraphData.nodes.filter(node => {
+            // Keep the selected node and any nodes connected to it
+            return node.id === parseInt(id) || 
+                   currentGraphData.edges.some(edge => 
+                     (edge.from === parseInt(id) && edge.to === node.id) || 
+                     (edge.to === parseInt(id) && edge.from === node.id)
+                   );
+          }),
+          edges: currentGraphData.edges.filter(edge => 
+            edge.from === parseInt(id) || edge.to === parseInt(id)
+          )
+        };
+
+        // Update visualization with filtered data
+        nodes.clear();
+        edges.clear();
+        nodes.add(filteredData.nodes);
+        edges.add(filteredData.edges);
+
+        // Focus on the selected node
+        network.focus(parseInt(id), {
+          scale: 1.5,
+          animation: true
+        });
+      } else {
+        // For edges, focus on both connected nodes
+        const edge = currentGraphData.edges.find(e => e.id === id);
+        if (edge) {
+          // Filter to show only triples involving these nodes
+          const filteredData = {
+            nodes: currentGraphData.nodes.filter(node => {
+              return node.id === edge.from || node.id === edge.to || 
+                     currentGraphData.edges.some(e => 
+                       (e.from === edge.from && e.to === node.id) || 
+                       (e.to === edge.from && e.from === node.id) ||
+                       (e.from === edge.to && e.to === node.id) || 
+                       (e.to === edge.to && e.from === node.id)
+                     );
+            }),
+            edges: currentGraphData.edges.filter(e => 
+              e.from === edge.from || e.to === edge.from ||
+              e.from === edge.to || e.to === edge.to
+            )
+          };
+
+          // Update visualization with filtered data
+          nodes.clear();
+          edges.clear();
+          nodes.add(filteredData.nodes);
+          edges.add(filteredData.edges);
+
+          network.focus([edge.from, edge.to], {
+            scale: 1.5,
+            animation: true
+          });
+        }
+      }
+
+      // Hide results after selection
+      searchResults.style.display = 'none';
+      searchInput.value = '';
+    });
+
+    // Close search results when clicking outside
+    document.addEventListener('click', function(e) {
+      if (!searchInput.contains(e.target) && !searchResults.contains(e.target)) {
+        searchResults.style.display = 'none';
+      }
+    });
 
     document.getElementById('fileInput').addEventListener('change', async function(event) {
       const file = event.target.files[0];

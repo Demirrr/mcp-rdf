@@ -160,30 +160,21 @@ export class RDFVisualizer {
     let nodeIdCounter = 0;
 
     graph.triples.forEach(triple => {
-      if (!nodeMap.has(triple.subject)) {
-        nodeMap.set(triple.subject, nodeIdCounter++);
-        nodes.add(triple.subject);
-      }
+
+      if (!nodeMap.has(triple.subject)) {nodeMap.set(triple.subject, nodeIdCounter++); nodes.add(triple.subject);}
       
-      if (triple.object && !nodeMap.has(triple.object)) {
-        nodeMap.set(triple.object, nodeIdCounter++);
-        nodes.add(triple.object);
-      }
+      if (triple.object && !nodeMap.has(triple.object)) { nodeMap.set(triple.object, nodeIdCounter++); nodes.add(triple.object);}
+
     });
 
-    const visNodes = Array.from(nodes).map(node => ({
-      id: nodeMap.get(node)!,
-      label: node,
-      shape: 'dot'
-    }));
+    const visNodes = Array.from(nodes).map(node => ({id: nodeMap.get(node)!, label: node, shape: 'dot'}));
 
     graph.triples.forEach((triple, index) => {
       const fromId = nodeMap.get(triple.subject)!;
       const toId = triple.object ? nodeMap.get(triple.object)! : undefined;
 
       if (toId !== undefined) {
-        edges.push({
-          id: `edge_${index}`,
+        edges.push({id: `edge_${index}`,
           from: fromId,
           to: toId,
           label: triple.predicate,
