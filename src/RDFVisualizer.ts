@@ -3,6 +3,7 @@ import { createServer, IncomingMessage, ServerResponse } from 'http';
 import { Server as SocketIOServer, Socket as IOSocket } from 'socket.io';
 import { readFileSync } from 'fs';
 import path from 'path';
+import OpenAI from 'openai';
 
 interface ClientSocket extends IOSocket {}
 
@@ -13,16 +14,15 @@ export class RDFVisualizer {
   private graphManager: RDFKnowledgeGraphManager;
   private port: number;
   private templatePath: string;
+  private openai: OpenAI;
 
   constructor(graphManager: RDFKnowledgeGraphManager, port: number = 3000, templatePath: string = './vs.html') {
     this.graphManager = graphManager;
     this.port = port;
     this.templatePath = path.resolve(templatePath);
-
-    this.graphManager.readGraph().then(graph => {
-      graph.triples.forEach(triple => {
-        console.log(triple);
-      });
+    this.openai = new OpenAI({
+      apiKey: "token-tentris-upb",
+      baseURL: "http://harebell.cs.upb.de:8501/v1"
     });
   }
 
@@ -34,6 +34,8 @@ export class RDFVisualizer {
         await this.handleFileUpload(req, res);
       } else if (req.url === '/addTriple' && req.method === 'POST') {
         await this.handleAddTripleRequest(req, res);
+      } else if (req.url === '/chat' && req.method === 'POST') {
+        await this.handleChatRequest(req, res);
       } else {
         this.handleNotFound(res);
       }
@@ -105,6 +107,91 @@ export class RDFVisualizer {
       console.error('Error adding triple via HTTP:', error);
       res.writeHead(400, {'Content-Type': 'application/json'});
       res.end(JSON.stringify({ error: 'Invalid triple format'}));
+    }
+  }
+
+  private async handleChatRequest(req: IncomingMessage, res: ServerResponse) {
+    let body = '';
+    try {
+      for await (const chunk of req) {
+        body += chunk.toString();
+      }
+      const { message, currentGraphData, functions } = JSON.parse(body);
+
+      const completion = await this.openai.chat.completions.create({
+        model: "tentris",
+        messages: [
+          {
+            role: "system",
+            content: `You are an AI assistant that helps users interact with an RDF graph visualization. 
+            You can help users understand the graph structure, add new triples, and modify the visualization settings.`
+          },
+          {
+            role: "user",
+            content: message
+          }
+        ],
+        functions: functions,
+        function_call: "auto"
+      });
+
+      const response = completion.choices[0].message;
+      console.debug(response);
+      console.debug(response.tool_calls);
+      for (let i in functions) {
+        console.debug(functions[i]);
+      }
+      // @TODO: Handle function calls
+      // Handle function calls
+      if (response.function_call) {
+        const functionName = response.function_call.name;
+        const args = JSON.parse(response.function_call.arguments);
+        let result;
+
+        switch (functionName) {
+          case 'addTriple':
+            const graph = await this.graphManager.readGraph();
+            graph.triples.push(args);
+            await this.graphManager.saveGraph(graph);
+            this.fetchAndSendGraphData(this.io);
+            result = { success: true, message: 'Triple added successfully' };
+            break;
+
+          case 'setMaxTriplesRatio':
+            result = { success: true, message: `Triple ratio set to ${args.ratio}%` };
+            break;
+
+          case 'countTriples':
+            const count = currentGraphData.edges.filter((edge: { from: number; to: number; label: string }) => {
+              const node = currentGraphData.nodes.find((n: { id: number; label: string }) => n.id === edge.from || n.id === edge.to);
+              return node.label.includes(args.nodeOrRelation) || edge.label.includes(args.nodeOrRelation);
+            }).length;
+            result = { 
+              success: true, 
+              count: count,
+              message: `Found ${count} triples involving "${args.nodeOrRelation}"`
+            };
+            break;
+
+          default:
+            result = { success: false, message: 'Unknown function' };
+        }
+
+        // Send the function result back to the client
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          ...response,
+          function_result: result
+        }));
+      } else {
+        // Regular text response
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(response));
+      }
+    } catch (error) {
+      console.error('Error processing chat request:', error);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to process chat request' }));
     }
   }
 

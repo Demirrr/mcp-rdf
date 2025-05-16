@@ -50,7 +50,7 @@ export class RDFKnowledgeGraphManager {
     }
   
     const ntriples = await new Promise<string>((resolve, reject) => {
-      writer.end((error, result) => {
+      writer.end((error: Error | null, result: string) => {
         if (error) reject(error);
         else resolve(result);
       });
@@ -92,7 +92,7 @@ export class RDFKnowledgeGraphManager {
       const parser = new N3.StreamParser();
       rdfStream.pipe(parser);
 
-      parser.on('data', (quad) => {
+      parser.on('data', (quad: N3.Quad) => {
         const triple: Triple = {
           subject: this.shortenIRI(graph, quad.subject.value),
           predicate: this.shortenIRI(graph, quad.predicate.value),
@@ -109,7 +109,7 @@ export class RDFKnowledgeGraphManager {
         resolve();
       });
 
-      parser.on('error', (err) => {
+      parser.on('error', (err: Error) => {
         console.error('Error while parsing:', err);
         reject(err);
       });
