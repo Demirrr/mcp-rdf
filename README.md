@@ -30,20 +30,10 @@ npm install
 
 ## Usage
 
-### Build
-
-Compile TypeScript source files:
+### Build & Start
 
 ```bash
-npm run build
-```
-
-### Start
-
-Run the compiled server:
-
-```bash
-npm start
+npm run build && npm start
 ```
 
 > Make sure to build the project before starting.
