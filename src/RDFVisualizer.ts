@@ -12,26 +12,11 @@ interface CurrentGraphData {
   edges: Array<{ from: number; to: number; label: string }>;
 }
 // Define interfaces for expected request body and function arguments for better type safety
-interface ChatRequest {
-  message: string;
-  currentGraphData: CurrentGraphData;
-  functions: ChatCompletionTool[];
-}
+interface ChatRequest { message: string; currentGraphData: CurrentGraphData;}
 
 // Define interfaces for specific function arguments
-interface AddTripleArgs {
-  subject: string;
-  predicate: string;
-  object: string;
-}
+interface AddTripleArgs {subject: string; predicate: string; object: string;}
 
-interface SetMaxTriplesRatioArgs {
-  ratio: number;
-}
-
-interface CountTriplesArgs {
-  nodeOrRelation: string;
-}
 
 interface ClientSocket extends IOSocket {}
 
@@ -90,6 +75,23 @@ export class RDFVisualizer {
             properties: {},
             additionalProperties: false
           }
+        }
+      },
+      {
+        type: "function",
+        function: {
+          name: "addTriple",
+          description: "Add a triple to the graph.",
+          parameters: {
+            type: "object",
+            properties: {
+              subject: { type: "string" },
+              predicate: { type: "string" },
+              object: { type: "string" }
+            },
+            required: ["subject", "predicate", "object"],
+            additionalProperties: false
+          } 
         }
       }
     ] as ChatCompletionTool[];
@@ -184,6 +186,7 @@ export class RDFVisualizer {
   private async handleAddTripleRequest(req: IncomingMessage, res: ServerResponse) {
     let body = '';
     try {
+      // @TODO: Do we need to sync the graph every time we add a triple?
       for await (const chunk of req) {body += chunk.toString();}
       const newTriple: Triple = JSON.parse(body);
       const graph = await this.graphManager.readGraph();
@@ -198,15 +201,12 @@ export class RDFVisualizer {
       res.end(JSON.stringify({ error: 'Invalid triple format'}));
     }
   }
-  // Dummy weather function
-  private async get_weather({ location }: { location: string }) {
-    return `It's sunny and 22°C in ${location}.`;
-  }
   private async get_number_of_triples(currentGraphData: CurrentGraphData) {
     const count = currentGraphData.edges.length;
     return `There are ${count} triples in the graph.`;
   }
-   
+  
+
   /**
    * Handles incoming chat requests, processes user messages,
    * interacts with the OpenAI API for completions and function calls,
@@ -220,12 +220,7 @@ export class RDFVisualizer {
     try {
       for await (const chunk of req) { body += chunk.toString(); }
       const requestData: ChatRequest = JSON.parse(body);
-      const { message, currentGraphData, functions } = requestData;
-
-      if (!message || !functions) {
-        this.sendErrorResponse(res, 400, 'Missing message or functions in request body');
-        return;
-      }
+      const { message, currentGraphData } = requestData;
 
       const initialResponse = await this.openai.chat.completions.create({
         model: this.model_name,
@@ -246,17 +241,15 @@ export class RDFVisualizer {
           const args = JSON.parse(toolCall.function.arguments);
 
           let functionResult = "";
-          if (functionName === "get_weather") {
-            functionResult = await this.get_weather(args);
-          } 
-          else if (functionName === "get_number_of_triples") {
-            functionResult = await this.get_number_of_triples(currentGraphData);
+          if (functionName === "get_number_of_triples") {
+          functionResult = await this.get_number_of_triples(currentGraphData);}
+          else if (functionName === "addTriple") {
+            const result = await this.handleAddTriple(args);
+            functionResult = result.message;
           }
-          else {
-            console.warn(`Unknown function: ${functionName}`);
-          }
+          else {console.warn(`Unknown function: ${functionName}`);}
 
-          console.debug(functionResult);
+          // @TODO: Do we need to add the functionResult to the message?
           const followup = await this.openai.chat.completions.create({
             model: this.model_name,
             messages: [
@@ -279,7 +272,6 @@ export class RDFVisualizer {
               }
             ],
           });
-
           this.sendSuccessResponse(res, { content: followup.choices[0].message.content });
         }
       } else {
@@ -291,43 +283,6 @@ export class RDFVisualizer {
     }
   }
   
-  /**
-   * Delegates the handling of specific function calls.
-   *
-   * @param functionName The name of the function to handle.
-   * @param args The arguments provided for the function call.
-   * @param currentGraphData The current graph data, potentially needed by some functions.
-   * @returns A promise resolving with the result of the function execution.
-   */
-  private async handleFunctionCall(functionName: string, args: any, currentGraphData: any): Promise<any> {
-    switch (functionName) {
-      case 'addTriple':
-        // Validate arguments for addTriple
-        if (!this.isValidAddTripleArgs(args)) {
-          throw new Error('Invalid arguments for addTriple function');
-        }
-        return this.handleAddTriple(args as AddTripleArgs);
-  
-      case 'setMaxTriplesRatio':
-        // Validate arguments for setMaxTriplesRatio
-         if (!this.isValidSetMaxTriplesRatioArgs(args)) {
-          throw new Error('Invalid arguments for setMaxTriplesRatio function');
-        }
-        return this.handleSetMaxTriplesRatio(args as SetMaxTriplesRatioArgs);
-  
-      case 'countTriples':
-        // Validate arguments for countTriples
-        if (!this.isValidCountTriplesArgs(args)) {
-          throw new Error('Invalid arguments for countTriples function');
-        }
-        return this.handleCountTriples(args as CountTriplesArgs, currentGraphData);
-  
-      default:
-        // Handle unknown function calls
-        console.warn(`Unknown function called: ${functionName}`);
-        return { success: false, message: `Unknown function: ${functionName}` };
-    }
-  }
   
   /**
    * Handles the 'addTriple' function call.
@@ -340,54 +295,12 @@ export class RDFVisualizer {
     // Assuming graphManager is available in the class instance
     const graph = await this.graphManager.readGraph();
     // Assuming graph.triples is an array where triples can be pushed directly
+    console.debug(args);
     graph.triples.push(args);
     await this.graphManager.saveGraph(graph);
     // Assuming fetchAndSendGraphData is a method that fetches and sends updated graph data via sockets
     this.fetchAndSendGraphData(this.io); // Assuming this.io is the socket.io server instance
     return { success: true, message: 'Triple added successfully' };
-  }
-  
-  /**
-   * Handles the 'setMaxTriplesRatio' function call.
-   * Currently just returns a success message acknowledging the change.
-   * More complex logic to actually set the ratio would go here.
-   *
-   * @param args The arguments for the setMaxTriplesRatio function.
-   * @returns A success message.
-   */
-  private async handleSetMaxTriplesRatio(args: SetMaxTriplesRatioArgs): Promise<{ success: true; message: string }> {
-    // @TODO: Implement logic to actually set the max triples ratio in your visualization settings
-    console.log(`Setting max triples ratio to ${args.ratio}%`);
-    return { success: true, message: `Triple ratio set to ${args.ratio}%` };
-  }
-  
-  /**
-   * Handles the 'countTriples' function call.
-   * Counts triples involving a specific node or relation in the current graph data.
-   *
-   * @param args The arguments for the countTriples function.
-   * @param currentGraphData The current graph data to analyze.
-   * @returns An object containing success status, count, and a message.
-   */
-  private async handleCountTriples(args: CountTriplesArgs, currentGraphData: ChatRequest['currentGraphData']): Promise<{ success: true; count: number; message: string }> {
-    // Filter edges where either the source or target node label, or the edge label,
-    // contains the specified nodeOrRelation string.
-    // This logic assumes a specific structure for nodes and edges in currentGraphData.
-    const count = currentGraphData.edges.filter((edge: { from: number; to: number; label: string }) => {
-      const fromNode = currentGraphData.nodes.find((n: { id: number; label: string }) => n.id === edge.from);
-      const toNode = currentGraphData.nodes.find((n: { id: number; label: string }) => n.id === edge.to);
-  
-      const nodeMatch = (fromNode?.label.includes(args.nodeOrRelation) || toNode?.label.includes(args.nodeOrRelation));
-      const relationMatch = edge.label.includes(args.nodeOrRelation);
-  
-      return nodeMatch || relationMatch;
-    }).length;
-  
-    return {
-      success: true,
-      count: count,
-      message: `Found ${count} triples involving "${args.nodeOrRelation}"`
-    };
   }
   
   /**
@@ -414,56 +327,7 @@ export class RDFVisualizer {
     res.writeHead(statusCode, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: message }));
   }
-  
-  // Basic validation functions for function arguments (can be made more robust)
-  private isValidAddTripleArgs(args: any): args is AddTripleArgs {
-    return typeof args === 'object' && args !== null &&
-           typeof args.subject === 'string' &&
-           typeof args.predicate === 'string' &&
-           typeof args.object === 'string';
-  }
-  
-  private isValidSetMaxTriplesRatioArgs(args: any): args is SetMaxTriplesRatioArgs {
-    return typeof args === 'object' && args !== null &&
-           typeof args.ratio === 'number';
-  }
-  
-  private isValidCountTriplesArgs(args: any): args is CountTriplesArgs {
-    return typeof args === 'object' && args !== null &&
-           typeof args.nodeOrRelation === 'string';
-  }
-  
-  
-  // Assume the following members exist in the class:
-  // private openai: OpenAI; // Initialized OpenAI client
-  // private graphManager: { readGraph(): Promise<{ triples: any[] }>; saveGraph(graph: any): Promise<void> }; // Interface for graph management
-  // private io: Socket; // Initialized socket.io server instance
-  // private fetchAndSendGraphData(io: Socket): void; // Method to fetch and send graph data
-  
-  // Example of how these members might be declared in the class:
-  /*
-  class ChatService {
-    private openai: OpenAI;
-    private graphManager: {
-      readGraph(): Promise<{ triples: any[] }>;
-      saveGraph(graph: any): Promise<void>
-    };
-    private io: Socket;
-  
-    constructor(openai: OpenAI, graphManager: any, io: Socket) {
-      this.openai = openai;
-      this.graphManager = graphManager; // Assign the graph manager instance
-      this.io = io; // Assign the socket.io instance
-    }
-  
-    // ... other methods including fetchAndSendGraphData and the refactored handleChatRequest
-    private fetchAndSendGraphData(io: Socket): void {
-        // Implementation to fetch graph data and emit via io
-        console.log("Fetching and sending graph data...");
-        // Example: io.emit('graphDataUpdate', latestGraphData);
-    }
-  }
-  */
+    
 
   private handleNotFound(res: ServerResponse) { res.writeHead(404); res.end('Not found'); }
 
