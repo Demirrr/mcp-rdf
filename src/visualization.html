@@ -4,187 +4,7 @@
   <title>RDF Graph Visualization</title>
   <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
-  <style type="text/css">
-    :root {
-      --main-border-color: lightgray;
-      --main-bg-color: rgba(240, 240, 240, 0.8);
-      --button-bg: #4CAF50;
-      --button-hover-bg: #45a049;
-      --download-bg: #007bff;
-      --download-hover-bg: #0056b3;
-      --chat-user-bg: #e3f2fd;
-      --chat-assistant-bg: #f5f5f5;
-      --highlight-color: #ffeb3b;
-      --input-border-color: #ccc;
-      --input-radius: 4px;
-    }
-  
-    /* Layout and container */
-    body {
-      margin: 0;
-      padding: 0;
-      height: 100vh;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      font-family: sans-serif;
-      background-color: #fdfdfd;
-    }
-  
-    #mynetwork {
-      width: 100%;
-      height: 100%;
-      border: 1px solid var(--main-border-color);
-    }
-  
-    /* Controls */
-    .controls {
-      position: absolute;
-      top: 20px;
-      right: 20px;
-      z-index: 1000;
-      padding: 15px;
-      background-color: var(--main-bg-color);
-      border: 1px solid var(--main-border-color);
-      border-radius: var(--input-radius);
-      text-align: right;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-  
-    .input-group {
-      display: flex;
-      align-items: center;
-      justify-content: flex-end;
-      margin-bottom: 5px;
-    }
-  
-    label {
-      margin-left: 10px;
-      font-size: 0.9rem;
-    }
-  
-    input[type="text"] {
-      padding: 8px;
-      border: 1px solid var(--input-border-color);
-      border-radius: var(--input-radius);
-      margin-left: 5px;
-      width: 200px;
-    }
-  
-    button {
-      padding: 8px 16px;
-      background-color: var(--button-bg);
-      color: white;
-      border: none;
-      border-radius: var(--input-radius);
-      cursor: pointer;
-      transition: background-color 0.3s ease;
-    }
-  
-    button:hover {
-      background-color: var(--button-hover-bg);
-    }
-  
-    #downloadButton {
-      background-color: var(--download-bg);
-    }
-  
-    #downloadButton:hover {
-      background-color: var(--download-hover-bg);
-    }
-  
-    /* Search autocomplete */
-    .search-container {
-      position: relative;
-      width: 100%;
-    }
-  
-    .search-results {
-      position: absolute;
-      top: 100%;
-      left: 0;
-      right: 0;
-      background: white;
-      border: 1px solid var(--input-border-color);
-      border-radius: var(--input-radius);
-      max-height: 200px;
-      overflow-y: auto;
-      z-index: 1001;
-      display: none;
-    }
-  
-    .search-result-item {
-      padding: 8px;
-      cursor: pointer;
-      border-bottom: 1px solid #eee;
-      transition: background-color 0.2s ease;
-    }
-  
-    .search-result-item:hover {
-      background-color: #f0f0f0;
-    }
-  
-    .search-result-item .highlight {
-      background-color: var(--highlight-color);
-      padding: 2px;
-    }
-  
-    /* Chat interface */
-    .chat-container {
-      position: absolute;
-      top: 550px;
-      right: 20px;
-      width: 390px;
-      height: 400px;
-      background-color: rgba(255, 255, 255, 0.95);
-      border: 1px solid var(--input-border-color);
-      border-radius: var(--input-radius);
-      display: flex;
-      flex-direction: column;
-      z-index: 1000;
-      margin-left: 20px;
-      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
-    }
-  
-    .chat-messages {
-      flex-grow: 1;
-      overflow-y: auto;
-      padding: 10px;
-    }
-  
-    .chat-input-container {
-      display: flex;
-      padding: 10px;
-      border-top: 1px solid var(--input-border-color);
-    }
-  
-    .chat-input {
-      flex-grow: 1;
-      padding: 8px;
-      border: 1px solid var(--input-border-color);
-      border-radius: var(--input-radius);
-      margin-right: 8px;
-    }
-  
-    .chat-message {
-      margin-bottom: 8px;
-      padding: 8px;
-      border-radius: var(--input-radius);
-    }
-  
-    .user-message {
-      background-color: var(--chat-user-bg);
-      margin-left: 20px;
-    }
-  
-    .assistant-message {
-      background-color: var(--chat-assistant-bg);
-      margin-right: 20px;
-    }
-  </style>
-  
+  <link rel="stylesheet" href="/src/styles.css">
 </head>
 <body>
   <div id="mynetwork"></div>
@@ -227,47 +47,105 @@
     </div>
   </div>
   <script type="text/javascript">
+    // Constants and configuration
+    const NETWORK_OPTIONS = {
+      nodes: {
+        shape: 'dot',
+        size: 15,
+        font: { size: 14 },
+        color: {
+          background: '#97C2FC',
+          border: '#2B7CE9',
+          highlight: {
+            background: '#D2E5FF',
+            border: '#2B7CE9'
+          }
+        }
+      },
+      edges: {
+        font: { size: 14, align: 'middle' },
+        color: 'gray',
+        arrows: { to: true },
+        smooth: false,
+        width: 2
+      },
+      physics: {
+        enabled: true,
+        barnesHut: {
+          gravitationalConstant: -2000,
+          centralGravity: 0.3,
+          springLength: 95,
+          springConstant: 0.04
+        },
+        minVelocity: 0.75
+      }
+    };
+
+    // Initialize data structures
     const nodes = new vis.DataSet([]);
     const edges = new vis.DataSet([]);
     const container = document.getElementById('mynetwork');
     const data = { nodes: nodes, edges: edges };
-    const options = {
-      nodes: { shape: 'dot', size: 15, font: { size: 14 },
-        color: { background: '#97C2FC', border: '#2B7CE9', highlight: {background: '#D2E5FF', border: '#2B7CE9' }}},
-        edges: { font: { size: 14, align: 'middle' }, color: 'gray', arrows: { to: true }, smooth: false, width: 2 },
-        physics: { enabled: true, barnesHut: { gravitationalConstant: -2000, centralGravity: 0.3, springLength: 95, springConstant: 0.04 }, minVelocity: 0.75 }
-    };
-    const network = new vis.Network(container, data, options);
+    const network = new vis.Network(container, data, NETWORK_OPTIONS);
     const socket = io(`http://localhost:${window.location.port}`);
     let currentGraphData = null;
     let showOnlyTypeTriples = false;
 
-    // Search functionality
+    // DOM Elements
     const searchInput = document.getElementById('searchInput');
     const searchResults = document.getElementById('searchResults');
-    let searchTimeout = null;
+    const chatMessages = document.getElementById('chatMessages');
+    const chatInput = document.getElementById('chatInput');
+    const tripleSlider = document.getElementById('tripleSlider');
+    const tripleCount = document.getElementById('tripleCount');
+    const typeFilterButton = document.getElementById('typeFilterButton');
+    const fileInput = document.getElementById('fileInput');
 
-    searchInput.addEventListener('input', function(e) {
+    // Event Listeners
+    socket.on('connect', () => {
+      console.log('Connected to WebSocket');
+      socket.emit('requestGraph');
+    });
+
+    socket.on('graphData', function(data) {
+      currentGraphData = data;
+      const sliderValue = tripleSlider.value;
+      updateVisualization(data, sliderValue);
+    });
+
+    // Search functionality
+    let searchTimeout = null;
+    searchInput.addEventListener('input', handleSearchInput);
+    searchResults.addEventListener('click', handleSearchResultClick);
+    document.addEventListener('click', handleDocumentClick);
+
+    // File upload
+    fileInput.addEventListener('change', handleFileUpload);
+
+    // Triple slider
+    tripleSlider.addEventListener('input', handleTripleSliderInput);
+
+    // Chat functionality
+    chatInput.addEventListener('keypress', handleChatKeyPress);
+
+    // Functions
+    function handleSearchInput(e) {
       const query = e.target.value.toLowerCase();
       
-      // Clear previous timeout
       if (searchTimeout) {
         clearTimeout(searchTimeout);
       }
 
-      // Hide results if query is empty
       if (!query) {
         searchResults.style.display = 'none';
         return;
       }
 
-      // Set a small delay to prevent too frequent updates
       searchTimeout = setTimeout(() => {
         if (!currentGraphData) return;
 
         const results = [];
         
-        // Search in nodes
         currentGraphData.nodes.forEach(node => {
           if (node.label.toLowerCase().includes(query)) {
             results.push({
@@ -278,7 +156,6 @@
           }
         });
 
-        // Search in edges
         currentGraphData.edges.forEach(edge => {
           if (edge.label.toLowerCase().includes(query)) {
             results.push({
@@ -291,31 +168,33 @@
           }
         });
 
-        // Display results
-        if (results.length > 0) {
-          searchResults.innerHTML = results.map(result => {
-            const label = result.label;
-            const highlightedLabel = label.replace(
-              new RegExp(query, 'gi'),
-              match => `<span class="highlight">${match}</span>`
-            );
-            
-            return `
-              <div class="search-result-item" data-type="${result.type}" data-id="${result.id}">
-                ${result.type === 'node' ? '🔵' : '➡️'} ${highlightedLabel}
-              </div>
-            `;
-          }).join('');
-          
-          searchResults.style.display = 'block';
-        } else {
-          searchResults.style.display = 'none';
-        }
+        displaySearchResults(results, query);
       }, 150);
-    });
+    }
 
-    // Handle search result clicks
-    searchResults.addEventListener('click', function(e) {
+    function displaySearchResults(results, query) {
+      if (results.length > 0) {
+        searchResults.innerHTML = results.map(result => {
+          const label = result.label;
+          const highlightedLabel = label.replace(
+            new RegExp(query, 'gi'),
+            match => `<span class="highlight">${match}</span>`
+          );
+          
+          return `
+            <div class="search-result-item" data-type="${result.type}" data-id="${result.id}">
+              ${result.type === 'node' ? '🔵' : '➡️'} ${highlightedLabel}
+            </div>
+          `;
+        }).join('');
+        
+        searchResults.style.display = 'block';
+      } else {
+        searchResults.style.display = 'none';
+      }
+    }
+
+    function handleSearchResultClick(e) {
       const resultItem = e.target.closest('.search-result-item');
       if (!resultItem) return;
 
@@ -323,109 +202,111 @@
       const id = resultItem.dataset.id;
 
       if (type === 'node') {
-        // Filter to show only triples involving this node
+        filterAndFocusNode(parseInt(id));
+      } else {
+        filterAndFocusEdge(id);
+      }
+
+      searchResults.style.display = 'none';
+      searchInput.value = '';
+    }
+
+    function filterAndFocusNode(nodeId) {
+      const filteredData = {
+        nodes: currentGraphData.nodes.filter(node => {
+          return node.id === nodeId || 
+                 currentGraphData.edges.some(edge => 
+                   (edge.from === nodeId && edge.to === node.id) || 
+                   (edge.to === nodeId && edge.from === node.id)
+                 );
+        }),
+        edges: currentGraphData.edges.filter(edge => 
+          edge.from === nodeId || edge.to === nodeId
+        )
+      };
+
+      updateVisualizationWithData(filteredData);
+      network.focus(nodeId, {
+        scale: 1.5,
+        animation: true
+      });
+    }
+
+    function filterAndFocusEdge(edgeId) {
+      const edge = currentGraphData.edges.find(e => e.id === edgeId);
+      if (edge) {
         const filteredData = {
           nodes: currentGraphData.nodes.filter(node => {
-            // Keep the selected node and any nodes connected to it
-            return node.id === parseInt(id) || 
-                   currentGraphData.edges.some(edge => 
-                     (edge.from === parseInt(id) && edge.to === node.id) || 
-                     (edge.to === parseInt(id) && edge.from === node.id)
+            return node.id === edge.from || node.id === edge.to || 
+                   currentGraphData.edges.some(e => 
+                     (e.from === edge.from && e.to === node.id) || 
+                     (e.to === edge.from && e.from === node.id) ||
+                     (e.from === edge.to && e.to === node.id) || 
+                     (e.to === edge.to && e.from === node.id)
                    );
           }),
-          edges: currentGraphData.edges.filter(edge => 
-            edge.from === parseInt(id) || edge.to === parseInt(id)
+          edges: currentGraphData.edges.filter(e => 
+            e.from === edge.from || e.to === edge.from ||
+            e.from === edge.to || e.to === edge.to
           )
         };
 
-        // Update visualization with filtered data
-        nodes.clear();
-        edges.clear();
-        nodes.add(filteredData.nodes);
-        edges.add(filteredData.edges);
-
-        // Focus on the selected node
-        network.focus(parseInt(id), {
+        updateVisualizationWithData(filteredData);
+        network.focus([edge.from, edge.to], {
           scale: 1.5,
           animation: true
         });
-      } else {
-        // For edges, focus on both connected nodes
-        const edge = currentGraphData.edges.find(e => e.id === id);
-        if (edge) {
-          // Filter to show only triples involving these nodes
-          const filteredData = {
-            nodes: currentGraphData.nodes.filter(node => {
-              return node.id === edge.from || node.id === edge.to || 
-                     currentGraphData.edges.some(e => 
-                       (e.from === edge.from && e.to === node.id) || 
-                       (e.to === edge.from && e.from === node.id) ||
-                       (e.from === edge.to && e.to === node.id) || 
-                       (e.to === edge.to && e.from === node.id)
-                     );
-            }),
-            edges: currentGraphData.edges.filter(e => 
-              e.from === edge.from || e.to === edge.from ||
-              e.from === edge.to || e.to === edge.to
-            )
-          };
-
-          // Update visualization with filtered data
-          nodes.clear();
-          edges.clear();
-          nodes.add(filteredData.nodes);
-          edges.add(filteredData.edges);
-
-          network.focus([edge.from, edge.to], {
-            scale: 1.5,
-            animation: true
-          });
-        }
       }
+    }
 
-      // Hide results after selection
-      searchResults.style.display = 'none';
-      searchInput.value = '';
-    });
-
-    // Close search results when clicking outside
-    document.addEventListener('click', function(e) {
+    function handleDocumentClick(e) {
       if (!searchInput.contains(e.target) && !searchResults.contains(e.target)) {
         searchResults.style.display = 'none';
       }
-    });
+    }
 
-    document.getElementById('fileInput').addEventListener('change', async function(event) {
+    async function handleFileUpload(event) {
       const file = event.target.files[0];
       if (file) {
         try {
           const text = await file.text();
-          const response = await fetch('/upload', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: text });
+          const response = await fetch('/upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: text
+          });
           const result = await response.json();
-          if (!result.success) alert('Error loading file: ' + result.error);
+          if (!result.success) {
+            alert('Error loading file: ' + result.error);
+          }
         } catch (error) {
           console.error('Error:', error);
           alert('Error loading file');
         }
       }
-    });
+    }
 
-    document.getElementById('tripleSlider').addEventListener('input', function(e) {
+    function handleTripleSliderInput(e) {
       const value = e.target.value;
-      document.getElementById('tripleCount').textContent = value;
+      tripleCount.textContent = value;
       if (currentGraphData) {
         updateVisualization(currentGraphData, value);
       }
-    });
+    }
+
+    function handleChatKeyPress(e) {
+      if (e.key === 'Enter') {
+        sendMessage();
+      }
+    }
 
     function toggleTypeFilter() {
       showOnlyTypeTriples = !showOnlyTypeTriples;
-      const button = document.getElementById('typeFilterButton');
-      button.textContent = showOnlyTypeTriples ? 'Show All Triples' : 'Show Only Type/Subclass';
-      button.style.backgroundColor = showOnlyTypeTriples ? '#FF6B6B' : '#4CAF50';
+      typeFilterButton.textContent = showOnlyTypeTriples ? 'Show All Triples' : 'Show Only Type/Subclass';
+      typeFilterButton.style.backgroundColor = showOnlyTypeTriples ? '#FF6B6B' : '#4CAF50';
       
       if (currentGraphData) {
-        const sliderValue = document.getElementById('tripleSlider').value;
+        const sliderValue = tripleSlider.value;
         updateVisualization(currentGraphData, sliderValue);
       }
     }
@@ -434,26 +315,21 @@
       nodes.clear();
       edges.clear();
 
-      // Filter edges based on type filter
       let filteredEdges = data.edges;
       if (showOnlyTypeTriples) {
         filteredEdges = data.edges.filter(edge => edge.label === 'rdfs:subClassOf');
       }
 
-      // Calculate how many triples to show based on the slider value
       const totalTriples = filteredEdges.length;
       const triplesToShow = Math.max(1, Math.floor((maxTriplesRatio / 100) * totalTriples));
-      // Get the first N triples
       const limitedEdges = filteredEdges.slice(0, triplesToShow);
 
-      // Get all unique nodes from the limited edges
       const nodeIds = new Set();
       limitedEdges.forEach(edge => {
         nodeIds.add(edge.from);
         nodeIds.add(edge.to);
       });
 
-      // Find nodes that occur with rdfs:subClassOf relationships
       const subclassNodeIds = new Set();
       data.edges.forEach(edge => {
         if (edge.label === 'rdfs:subClassOf') {
@@ -462,41 +338,35 @@
         }
       });
 
-      // Filter the original nodes based on the nodeIds present in the limited edges
-      // and apply coloring based on whether the node is in subclassNodeIds
       const limitedNodes = data.nodes
-        .filter(node => nodeIds.has(node.id)) // Only include nodes that are part of the visualized edges
-        .map(node => {
-          const isSubclassNode = subclassNodeIds.has(node.id);
-          return {
-            ...node,
-            color: isSubclassNode
-              ? { // Red color for nodes involved in subclass relationships
-                  background: '#FF6B6B',
-                  border: '#FF0000',
-                  highlight: { background: '#FFB6B6', border: '#FF0000' }
-                }
-              : { // Default blue color for other nodes
-                  background: '#97C2FC',
-                  border: '#2B7CE9',
-                  highlight: { background: '#D2E5FF', border: '#2B7CE9' }
-                }
-          };
-        });
+        .filter(node => nodeIds.has(node.id))
+        .map(node => ({
+          ...node,
+          color: subclassNodeIds.has(node.id)
+            ? {
+                background: '#FF6B6B',
+                border: '#FF0000',
+                highlight: { background: '#FFB6B6', border: '#FF0000' }
+              }
+            : {
+                background: '#97C2FC',
+                border: '#2B7CE9',
+                highlight: { background: '#D2E5FF', border: '#2B7CE9' }
+              }
+        }));
 
-      // Add nodes first, then edges to ensure all referenced nodes exist
       nodes.add(limitedNodes);
       edges.add(limitedEdges);
 
       network.fit();
     }
 
-    socket.on('connect', () => { console.log('Connected to WebSocket'); socket.emit('requestGraph'); });
-    socket.on('graphData', function(data) {
-      currentGraphData = data;
-      const sliderValue = document.getElementById('tripleSlider').value;
-      updateVisualization(data, sliderValue);
-    });
+    function updateVisualizationWithData(data) {
+      nodes.clear();
+      edges.clear();
+      nodes.add(data.nodes);
+      edges.add(data.edges);
+    }
 
     function addTriple() {
       const subject = document.getElementById('subject').value;
@@ -508,12 +378,9 @@
         return;
       }
 
-      const newTriple = { subject: subject, predicate: predicate, object: object};
-
-      // Send the new triple to the server via WebSocket
+      const newTriple = { subject, predicate, object };
       socket.emit('addTriple', newTriple);
 
-      // Clear the input fields
       document.getElementById('subject').value = '';
       document.getElementById('predicate').value = '';
       document.getElementById('object').value = '';
@@ -534,11 +401,6 @@
       document.body.removeChild(a);
     }
 
-    // Chat functionality
-    const chatMessages = document.getElementById('chatMessages');
-    const chatInput = document.getElementById('chatInput');
-
-    // Function to add a message to the chat
     function addMessage(message, isUser = false) {
       const messageDiv = document.createElement('div');
       messageDiv.className = `chat-message ${isUser ? 'user-message' : 'assistant-message'}`;
@@ -547,24 +409,20 @@
       chatMessages.scrollTop = chatMessages.scrollHeight;
     }
 
-    // Function to send message to OpenAI
     async function sendMessage() {
       const message = chatInput.value.trim();
       if (!message) return;
 
-      // Add user message to chat
       addMessage(message, true);
       chatInput.value = '';
 
       try {
         const response = await fetch('/chat', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({
             message,
-            currentGraphData,
+            currentGraphData: getCurrentSubgraph(),
             functions: [
               {
                 name: 'addTriple',
@@ -621,7 +479,6 @@
       }
     }
 
-    // Function to handle function calls from the LLM
     async function handleFunctionCall(functionName, args) {
       switch (functionName) {
         case 'addTriple':
@@ -632,8 +489,8 @@
         
         case 'setMaxTriplesRatio':
           const { ratio } = args;
-          document.getElementById('tripleSlider').value = ratio;
-          document.getElementById('tripleCount').textContent = ratio;
+          tripleSlider.value = ratio;
+          tripleCount.textContent = ratio;
           if (currentGraphData) {
             updateVisualization(currentGraphData, ratio);
           }
@@ -641,7 +498,9 @@
 
         case 'countTriples':
           const { nodeOrRelation } = args;
-          if (!currentGraphData) return { success: false, message: 'No graph data available' };
+          if (!currentGraphData) {
+            return { success: false, message: 'No graph data available' };
+          }
           
           const count = currentGraphData.edges.filter(edge => {
             const node = currentGraphData.nodes.find(n => n.id === edge.from || n.id === edge.to);
@@ -659,12 +518,33 @@
       }
     }
 
-    // Allow sending message with Enter key
-    chatInput.addEventListener('keypress', function(e) {
-      if (e.key === 'Enter') {
-        sendMessage();
+    function getCurrentSubgraph() {
+      if (!currentGraphData) return null;
+
+      const sliderValue = tripleSlider.value;
+      let filteredEdges = currentGraphData.edges;
+      
+      if (showOnlyTypeTriples) {
+        filteredEdges = currentGraphData.edges.filter(edge => edge.label === 'rdfs:subClassOf');
       }
-    });
+
+      const totalTriples = filteredEdges.length;
+      const triplesToShow = Math.max(1, Math.floor((sliderValue / 100) * totalTriples));
+      const limitedEdges = filteredEdges.slice(0, triplesToShow);
+
+      const nodeIds = new Set();
+      limitedEdges.forEach(edge => {
+        nodeIds.add(edge.from);
+        nodeIds.add(edge.to);
+      });
+
+      const limitedNodes = currentGraphData.nodes.filter(node => nodeIds.has(node.id));
+
+      return {
+        nodes: limitedNodes,
+        edges: limitedEdges
+      };
+    }
   </script>
 </body>
 </html>
