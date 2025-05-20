@@ -3,8 +3,7 @@ import { RDFVisualizer } from "./src/RDFVisualizer";
 
 const local_path_of_kg = "inferred_family-benchmark_rich_background.ttl";
 
-
-const rdfManager = new RDFKnowledgeGraphManager(local_path_of_kg);
+const rdfManager = new RDFKnowledgeGraphManager();
 const visualizer = new RDFVisualizer(rdfManager, 4000, "./src/visualization.html");
 // Initialize the visualization server
 visualizer.initialize();

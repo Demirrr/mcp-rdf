@@ -226,19 +226,16 @@ async function handleFileUpload(event) {
   if (file) {
     try {
       const text = await file.text();
-      const response = await fetch('/upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: text
-      });
+      const fileExtension = file.name.split('.').pop().toLowerCase();
+      
+      // Create FormData to send both the file content and its format
+      const formData = new FormData();
+      formData.append('content', text);
+      formData.append('format', fileExtension);
+      const response = await fetch('/upload', {method: 'POST',body: formData});
       const result = await response.json();
-      if (!result.success) {
-        alert('Error loading file: ' + result.error);
-      }
-    } catch (error) {
-      console.error('Error:', error);
-      alert('Error loading file');
-    }
+      if (!result.success) {alert('Error loading file: ' + result.error);}
+    } catch (error) { console.error('Error:', error); alert('Error loading file: ' + error.message);}
   }
 }
 
@@ -339,18 +336,21 @@ function addTriple() {
 }
 
 function downloadGraph() {
-  const graphData = {
-    nodes: nodes.get(),
-    edges: edges.get()
-  };
-  const jsonString = JSON.stringify(graphData, null, 2);
-  const blob = new Blob([jsonString], { type: 'application/json' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'graph.json';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
+  // Request the RDF data from the server
+  fetch('/download')
+    .then(response => response.blob())
+    .then(blob => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'graph.ttl';  // Default to Turtle format
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    })
+    .catch(error => {
+      console.error('Error downloading graph:', error);
+      alert('Error downloading graph. Please try again.');
+    });
 }
 
 function addMessage(message, isUser = false) {
