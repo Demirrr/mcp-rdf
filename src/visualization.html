@@ -8,6 +8,13 @@
 </head>
 <body>
   <div id="mynetwork"></div>
+  <div class="chat-container">
+    <div class="chat-messages" id="chatMessages"></div>
+    <div class="chat-input-container">
+      <input type="text" class="chat-input" id="chatInput" placeholder="Ask about the graph...">
+      <button onclick="sendMessage()">Send</button>
+    </div>
+  </div>
   <div class="controls">
     <div class="search-container">
       <input type="text" id="searchInput" placeholder="Search nodes..." style="width: 100%;">
@@ -37,13 +44,6 @@
     </div>
     <div class="input-group" style="margin-top: 10px;">
       <button id="typeFilterButton" onclick="toggleTypeFilter()" style="width: 100%;">Show Only Type/Subclass</button>
-    </div>
-  </div>
-  <div class="chat-container">
-    <div class="chat-messages" id="chatMessages"></div>
-    <div class="chat-input-container">
-      <input type="text" class="chat-input" id="chatInput" placeholder="Ask about the graph...">
-      <button onclick="sendMessage()">Send</button>
     </div>
   </div>
   <script type="text/javascript" src="/src/visualization.js"></script>
