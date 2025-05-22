@@ -5,25 +5,12 @@ import { readFileSync } from 'fs';
 import path from 'path';
 import OpenAI from 'openai';
 import { ChatCompletionTool } from 'openai/resources/chat/completions';
+import fsp from 'fs/promises';
+import { CurrentGraphData, ChatRequest, AddTripleArgs, ClientSocket, VisualizationData } from './interfaces/interface_visualizer';
+import * as N3 from 'n3';
+import { Quad, NamedNode, Literal, DataFactory } from 'n3';
+const { namedNode, literal, defaultGraph } = DataFactory;
 require('dotenv').config();
-
-interface CurrentGraphData {
-  nodes: Array<{ id: number; label: string }>;
-  edges: Array<{ from: number; to: number; label: string }>;
-}
-// Define interfaces for expected request body and function arguments for better type safety
-interface ChatRequest { message: string; currentGraphData: CurrentGraphData;}
-
-// Define interfaces for specific function arguments
-interface AddTripleArgs {subject: string; predicate: string; object: string;}
-
-
-interface ClientSocket extends IOSocket {}
-
-interface VisualizationData {
-  nodes: Array<{ id: number; label: string; shape: string }>;
-  edges: Array<{ id: string; from: number; to: number; label: string; arrows: string }>;
-}
 
 export class RDFVisualizer {
   private io!: SocketIOServer;
@@ -34,11 +21,7 @@ export class RDFVisualizer {
   private model_name: string;
   private tools: ChatCompletionTool[];
 
-  constructor(
-    graphManager: RDFKnowledgeGraphManager,
-    port: number = 3000,
-    templatePath: string = './src/visualization.html'
-  ) {
+  constructor(graphManager: RDFKnowledgeGraphManager, port: number = 3000,templatePath: string = './src/visualization.html') {
     this.graphManager = graphManager;
     this.port = port;
     this.templatePath = path.resolve(templatePath);
@@ -107,6 +90,8 @@ export class RDFVisualizer {
         await this.handleAddTripleRequest(req, res);
       } else if (req.url === '/chat' && req.method === 'POST') {
         await this.handleChatRequest(req, res);
+      } else if (req.url?.startsWith('/download')) {
+        await this.handleDownloadRequest(req, res);
       } else if (req.url?.startsWith('/src/')) {
         // Handle static files from src directory
         const filePath = path.join(process.cwd(), req.url);
@@ -165,33 +150,94 @@ export class RDFVisualizer {
   }
 
   private async handleFileUpload(req: IncomingMessage, res: ServerResponse) {
-    let body = '';
     try {
-      for await (const chunk of req) { body += chunk.toString(); }
-      const graph: RDFGraph = JSON.parse(body);
-      await this.graphManager.saveGraph(graph);
-      const visualizationData = this.convertToVisualization(graph);
-      this.io.emit('graphData', visualizationData);
-      res.writeHead(200, { 'Content-Type': 'application/json'});
-      res.end(JSON.stringify({success: true}));
+      // Use a more robust approach to parse multipart form data
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) {
+        chunks.push(Buffer.from(chunk));
+      }
+      const body = Buffer.concat(chunks);
+      
+      // Parse the multipart form data
+      const contentType = req.headers['content-type'];
+      if (!contentType || !contentType.includes('multipart/form-data')) {
+        throw new Error('Invalid content type: expected multipart/form-data');
+      }
+
+      const boundary = contentType.split('boundary=')[1];
+      if (!boundary) {
+        throw new Error('No boundary found in content-type header');
+      }
+
+      // Split the body by boundary
+      const parts = body.toString().split('--' + boundary);
+      let content = '';
+      let format = '';
+
+      for (const part of parts) {
+        if (part.includes('name="content"')) {
+          // Extract content between the headers and the next boundary
+          const contentMatch = part.match(/\r\n\r\n([\s\S]*?)(?=\r\n--|$)/);
+          if (contentMatch) {
+            content = contentMatch[1].trim();
+          }
+        } else if (part.includes('name="format"')) {
+          const formatMatch = part.match(/\r\n\r\n([\s\S]*?)(?=\r\n--|$)/);
+          if (formatMatch) {
+            format = formatMatch[1].trim();
+          }
+        }
+      }
+
+      if (!content || !format) {
+        throw new Error('Missing content or format in upload');
+      }
+
+      // Create a temporary file with the correct extension
+      const tempFilePath = path.join(process.cwd(), `temp_upload.${format}`);
+      await fsp.writeFile(tempFilePath, content, 'utf8');
+
+      try {
+        // Set the memory file path to the temporary file
+        this.graphManager = new RDFKnowledgeGraphManager(tempFilePath);
+        
+        // Read the graph from the temporary file
+        const graph = await this.graphManager.readGraph();
+        
+        // Convert and send the visualization data
+        const visualizationData = this.convertToVisualization(graph);
+        this.io.emit('graphData', visualizationData);
+        
+        res.writeHead(200, { 'Content-Type': 'application/json'});
+        res.end(JSON.stringify({success: true}));
+      } finally {
+        // Clean up the temporary file
+        try {
+          await fsp.unlink(tempFilePath);
+        } catch (error) {
+          console.error('Error cleaning up temporary file:', error);
+        }
+      }
     } catch (error) {
       console.error('Error processing uploaded file:', error);
       res.writeHead(400, {
         'Content-Type': 'application/json'
       });
-      res.end(JSON.stringify({error: 'Invalid JSON-LD file format'}));
+      res.end(JSON.stringify({
+        success: false,
+        error: 'Invalid RDF file format: ' + (error instanceof Error ? error.message : String(error))
+      }));
     }
   }
 
   private async handleAddTripleRequest(req: IncomingMessage, res: ServerResponse) {
     let body = '';
     try {
-      // @TODO: Do we need to sync the graph every time we add a triple?
       for await (const chunk of req) {body += chunk.toString();}
       const newTriple: Triple = JSON.parse(body);
-      const graph = await this.graphManager.readGraph();
-      graph.triples.push(newTriple);
-      await this.graphManager.saveGraph(graph);
+      await this.graphManager.updateGraph(graph => {
+        graph.triples.push(newTriple);
+      });
       this.fetchAndSendGraphData(this.io);
       res.writeHead(200, {'Content-Type': 'application/json'});
       res.end(JSON.stringify({success: true, message: 'Triple added successfully' }));
@@ -201,20 +247,13 @@ export class RDFVisualizer {
       res.end(JSON.stringify({ error: 'Invalid triple format'}));
     }
   }
+
   private async get_number_of_triples(currentGraphData: CurrentGraphData) {
     const count = currentGraphData.edges.length;
     return `There are ${count} triples in the graph.`;
   }
   
 
-  /**
-   * Handles incoming chat requests, processes user messages,
-   * interacts with the OpenAI API for completions and function calls,
-   * and responds to the client.
-   *
-   * @param req The incoming HTTP request.
-   * @param res The server response object.
-   */
   private async handleChatRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
     let body = '';
     try {
@@ -284,51 +323,27 @@ export class RDFVisualizer {
   }
   
   
-  /**
-   * Handles the 'addTriple' function call.
-   * Reads the current graph, adds the new triple, saves the graph, and notifies clients.
-   *
-   * @param args The arguments for the addTriple function.
-   * @returns A success message.
-   */
+
   private async handleAddTriple(args: AddTripleArgs): Promise<{ success: true; message: string }> {
-    // Assuming graphManager is available in the class instance
-    const graph = await this.graphManager.readGraph();
-    // Assuming graph.triples is an array where triples can be pushed directly
-    console.debug(args);
-    graph.triples.push(args);
-    await this.graphManager.saveGraph(graph);
-    // Assuming fetchAndSendGraphData is a method that fetches and sends updated graph data via sockets
-    this.fetchAndSendGraphData(this.io); // Assuming this.io is the socket.io server instance
+    await this.graphManager.updateGraph(graph => {
+      graph.triples.push(args);
+    });
+    this.fetchAndSendGraphData(this.io);
     return { success: true, message: 'Triple added successfully' };
   }
   
-  /**
-   * Sends a successful JSON response to the client.
-   *
-   * @param res The server response object.
-   * @param data The data to send in the response body.
-   * @param statusCode The HTTP status code (defaults to 200).
-   */
+
   private sendSuccessResponse(res: ServerResponse, data: any, statusCode: number = 200): void {
     res.writeHead(statusCode, { 'Content-Type': 'application/json' });
     console.debug("Sending success response:", JSON.stringify(data));
     res.end(JSON.stringify(data));
   }
   
-  /**
-   * Sends an error JSON response to the client.
-   *
-   * @param res The server response object.
-   * @param statusCode The HTTP status code.
-   * @param message The error message to send.
-   */
   private sendErrorResponse(res: ServerResponse, statusCode: number, message: string): void {
     res.writeHead(statusCode, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: message }));
   }
-    
-
+  
   private handleNotFound(res: ServerResponse) { res.writeHead(404); res.end('Not found'); }
 
   private handleSocketConnection = (socket: ClientSocket) => {
@@ -343,10 +358,10 @@ export class RDFVisualizer {
     socket.on('addTriple', async (triple: Triple) => {
       console.log('Client adding triple via WebSocket:', socket.id, triple);
       try {
-        const graph = await this.graphManager.readGraph();
-        graph.triples.push(triple);
-        await this.graphManager.saveGraph(graph);
-        this.fetchAndSendGraphData(this.io); // Emit to all connected clients
+        await this.graphManager.updateGraph(graph => {
+          graph.triples.push(triple);
+        });
+        this.fetchAndSendGraphData(this.io);
       } catch (error) {
         console.error('Error adding triple via WebSocket:', error);
         socket.emit('error', 'Failed to add triple');
@@ -360,10 +375,9 @@ export class RDFVisualizer {
 
   private async fetchAndSendGraphData(emitter: SocketIOServer | ClientSocket) {
     try {
-      const graph:RDFGraph = await this.graphManager.readGraph();
+      const graph = await this.graphManager.readGraph();
       const visualizationData = this.convertToVisualization(graph);
       emitter.emit('graphData', visualizationData);
-
     } catch (error) {
       console.error('Error fetching and sending graph data:', error);
       if (emitter instanceof IOSocket) {
@@ -417,5 +431,104 @@ export class RDFVisualizer {
       nodes: visNodes,
       edges
     };
+  }
+
+  private async handleDownloadRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    try {
+      if (!req.url) {
+        throw new Error('No URL provided in request');
+      }
+
+      const graph = await this.graphManager.readGraph();
+      const memoryFilePath = this.graphManager.getMemoryFilePath();
+      
+      // Parse query parameters for filename and format
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const requestedFormat = url.searchParams.get('format') || 'turtle';
+      const requestedFilename = url.searchParams.get('filename') || 'graph';
+      
+      // Validate format
+      const validFormats = ['turtle', 'ntriples', 'nquads', 'trig'];
+      if (!validFormats.includes(requestedFormat)) {
+        throw new Error(`Invalid format: ${requestedFormat}. Valid formats are: ${validFormats.join(', ')}`);
+      }
+      
+      // Create filename with proper extension
+      const extension = requestedFormat === 'turtle' ? 'ttl' : requestedFormat;
+      const filename = `${requestedFilename}.${extension}`;
+      
+      if (!memoryFilePath) {
+        // If no file path is provided, serialize the graph in memory
+        const writer = new N3.Writer({ format: requestedFormat });
+        
+        try {
+          for (const triple of graph.triples) {
+            const subjectNode = namedNode(triple.subject);
+            const predicateNode = namedNode(triple.predicate);
+            let objectTerm: NamedNode | Literal;
+            
+            if (triple.object.startsWith('"') || triple.object.includes('^^') || triple.object.includes('@')) {
+              try {
+                const parser = new N3.Parser();
+                const quads = parser.parse(`_:s _:p ${triple.object} .`);
+                if (quads.length > 0 && quads[0].object.termType === 'Literal') {
+                  objectTerm = quads[0].object as Literal;
+                } else {
+                  objectTerm = literal(triple.object);
+                }
+              } catch (e) {
+                objectTerm = literal(triple.object);
+              }
+            } else {
+              objectTerm = namedNode(triple.object);
+            }
+            
+            writer.addQuad(subjectNode, predicateNode, objectTerm, defaultGraph());
+          }
+          
+          const serializedGraph = await new Promise<string>((resolve, reject) => {
+            writer.end((error: Error | null, result: string) => {
+              if (error) reject(error);
+              else resolve(result);
+            });
+          });
+          
+          res.writeHead(200, {
+            'Content-Type': `text/${requestedFormat}`,
+            'Content-Disposition': `attachment; filename="${filename}"`
+          });
+          
+          res.end(serializedGraph);
+          return;
+        } catch (error: unknown) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+          throw new Error(`Failed to serialize graph: ${errorMessage}`);
+        }
+      }
+      
+      // Read the serialized graph from the file
+      try {
+        const serializedGraph = await fsp.readFile(memoryFilePath, 'utf8');
+        
+        // Set appropriate headers for RDF download
+        res.writeHead(200, {
+          'Content-Type': `text/${requestedFormat}`,
+          'Content-Disposition': `attachment; filename="${filename}"`
+        });
+        
+        res.end(serializedGraph);
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+        throw new Error(`Failed to read file: ${errorMessage}`);
+      }
+    } catch (error: unknown) {
+      console.error('Error handling download request:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ 
+        error: 'Failed to download graph',
+        details: errorMessage 
+      }));
+    }
   }
 }

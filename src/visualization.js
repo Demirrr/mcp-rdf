@@ -226,18 +226,26 @@ async function handleFileUpload(event) {
   if (file) {
     try {
       const text = await file.text();
+      const fileExtension = file.name.split('.').pop().toLowerCase();
+      
+      // Create FormData to send both the file content and its format
+      const formData = new FormData();
+      formData.append('content', text);
+      formData.append('format', fileExtension);
+      
+      // Let the browser set the correct Content-Type header with boundary
       const response = await fetch('/upload', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: text
+        body: formData
       });
+      
       const result = await response.json();
       if (!result.success) {
         alert('Error loading file: ' + result.error);
       }
     } catch (error) {
       console.error('Error:', error);
-      alert('Error loading file');
+      alert('Error loading file: ' + error.message);
     }
   }
 }
@@ -252,7 +260,13 @@ function handleTripleSliderInput(e) {
 
 function handleChatKeyPress(e) {
   if (e.key === 'Enter') {
-    sendMessage();
+    if (e.shiftKey) {
+      // Let the default behavior handle the newline in textarea
+      return;
+    } else {
+      e.preventDefault(); // Prevent default Enter behavior
+      sendMessage();
+    }
   }
 }
 
@@ -338,19 +352,140 @@ function addTriple() {
   document.getElementById('object').value = '';
 }
 
-function downloadGraph() {
-  const graphData = {
-    nodes: nodes.get(),
-    edges: edges.get()
+function showDownloadDialog() {
+  const dialog = document.createElement('div');
+  dialog.className = 'download-dialog';
+  dialog.innerHTML = `
+    <div class="download-dialog-content">
+      <h3>Download Graph</h3>
+      <div class="form-group">
+        <label for="downloadFilename">Filename:</label>
+        <input type="text" id="downloadFilename" value="graph" />
+      </div>
+      <div class="form-group">
+        <label for="downloadFormat">Format:</label>
+        <select id="downloadFormat">
+          <option value="turtle">Turtle (.ttl)</option>
+          <option value="ntriples">N-Triples (.nt)</option>
+          <option value="nquads">N-Quads (.nq)</option>
+          <option value="trig">TriG (.trig)</option>
+        </select>
+      </div>
+      <div class="dialog-buttons">
+        <button id="downloadCancel">Cancel</button>
+        <button id="downloadConfirm">Download</button>
+      </div>
+    </div>
+  `;
+
+  // Add styles
+  const style = document.createElement('style');
+  style.textContent = `
+    .download-dialog {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+    }
+    .download-dialog-content {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      min-width: 300px;
+    }
+    .form-group {
+      margin: 15px 0;
+    }
+    .form-group label {
+      display: block;
+      margin-bottom: 5px;
+    }
+    .form-group input,
+    .form-group select {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+    .dialog-buttons {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 20px;
+    }
+    .dialog-buttons button {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    #downloadCancel {
+      background: #f0f0f0;
+    }
+    #downloadConfirm {
+      background: #4CAF50;
+      color: white;
+    }
+  `;
+  document.head.appendChild(style);
+  document.body.appendChild(dialog);
+
+  // Handle dialog events
+  const filenameInput = dialog.querySelector('#downloadFilename');
+  const formatSelect = dialog.querySelector('#downloadFormat');
+  const cancelButton = dialog.querySelector('#downloadCancel');
+  const confirmButton = dialog.querySelector('#downloadConfirm');
+
+  cancelButton.onclick = () => {
+    document.body.removeChild(dialog);
+    document.head.removeChild(style);
   };
-  const jsonString = JSON.stringify(graphData, null, 2);
-  const blob = new Blob([jsonString], { type: 'application/json' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'graph.json';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
+
+  confirmButton.onclick = () => {
+    const filename = filenameInput.value.trim() || 'graph';
+    const format = formatSelect.value;
+    downloadGraph(filename, format);
+    document.body.removeChild(dialog);
+    document.head.removeChild(style);
+  };
+}
+
+function downloadGraph(filename = 'graph', format = 'turtle') {
+  // Get the current base URL
+  const baseUrl = window.location.origin;
+  
+  // Request the RDF data from the server with format and filename parameters
+  fetch(`${baseUrl}/download?format=${format}&filename=${encodeURIComponent(filename)}`)
+    .then(response => {
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return response.blob();
+    })
+    .then(blob => {
+      // Create a temporary link element
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `${filename}.${format === 'turtle' ? 'ttl' : format}`;
+      
+      // Trigger the file save dialog
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      
+      // Clean up the object URL
+      URL.revokeObjectURL(a.href);
+    })
+    .catch(error => {
+      console.error('Error downloading graph:', error);
+      alert('Error downloading graph. Please try again.');
+    });
 }
 
 function addMessage(message, isUser = false) {
