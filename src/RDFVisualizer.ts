@@ -90,7 +90,7 @@ export class RDFVisualizer {
         await this.handleAddTripleRequest(req, res);
       } else if (req.url === '/chat' && req.method === 'POST') {
         await this.handleChatRequest(req, res);
-      } else if (req.url === '/download' && req.method === 'GET') {
+      } else if (req.url?.startsWith('/download')) {
         await this.handleDownloadRequest(req, res);
       } else if (req.url?.startsWith('/src/')) {
         // Handle static files from src directory
@@ -435,66 +435,100 @@ export class RDFVisualizer {
 
   private async handleDownloadRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
     try {
+      if (!req.url) {
+        throw new Error('No URL provided in request');
+      }
+
       const graph = await this.graphManager.readGraph();
       const memoryFilePath = this.graphManager.getMemoryFilePath();
       
+      // Parse query parameters for filename and format
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const requestedFormat = url.searchParams.get('format') || 'turtle';
+      const requestedFilename = url.searchParams.get('filename') || 'graph';
+      
+      // Validate format
+      const validFormats = ['turtle', 'ntriples', 'nquads', 'trig'];
+      if (!validFormats.includes(requestedFormat)) {
+        throw new Error(`Invalid format: ${requestedFormat}. Valid formats are: ${validFormats.join(', ')}`);
+      }
+      
+      // Create filename with proper extension
+      const extension = requestedFormat === 'turtle' ? 'ttl' : requestedFormat;
+      const filename = `${requestedFilename}.${extension}`;
+      
       if (!memoryFilePath) {
         // If no file path is provided, serialize the graph in memory
-        const writer = new N3.Writer({ format: 'Turtle' });
-        for (const triple of graph.triples) {
-          const subjectNode = namedNode(triple.subject);
-          const predicateNode = namedNode(triple.predicate);
-          let objectTerm: NamedNode | Literal;
-          
-          if (triple.object.startsWith('"') || triple.object.includes('^^') || triple.object.includes('@')) {
-            try {
-              const parser = new N3.Parser();
-              const quads = parser.parse(`_:s _:p ${triple.object} .`);
-              if (quads.length > 0 && quads[0].object.termType === 'Literal') {
-                objectTerm = quads[0].object as Literal;
-              } else {
+        const writer = new N3.Writer({ format: requestedFormat });
+        
+        try {
+          for (const triple of graph.triples) {
+            const subjectNode = namedNode(triple.subject);
+            const predicateNode = namedNode(triple.predicate);
+            let objectTerm: NamedNode | Literal;
+            
+            if (triple.object.startsWith('"') || triple.object.includes('^^') || triple.object.includes('@')) {
+              try {
+                const parser = new N3.Parser();
+                const quads = parser.parse(`_:s _:p ${triple.object} .`);
+                if (quads.length > 0 && quads[0].object.termType === 'Literal') {
+                  objectTerm = quads[0].object as Literal;
+                } else {
+                  objectTerm = literal(triple.object);
+                }
+              } catch (e) {
                 objectTerm = literal(triple.object);
               }
-            } catch (e) {
-              objectTerm = literal(triple.object);
+            } else {
+              objectTerm = namedNode(triple.object);
             }
-          } else {
-            objectTerm = namedNode(triple.object);
+            
+            writer.addQuad(subjectNode, predicateNode, objectTerm, defaultGraph());
           }
           
-          writer.addQuad(subjectNode, predicateNode, objectTerm, defaultGraph());
-        }
-        
-        const serializedGraph = await new Promise<string>((resolve, reject) => {
-          writer.end((error: Error | null, result: string) => {
-            if (error) reject(error);
-            else resolve(result);
+          const serializedGraph = await new Promise<string>((resolve, reject) => {
+            writer.end((error: Error | null, result: string) => {
+              if (error) reject(error);
+              else resolve(result);
+            });
           });
-        });
-        
-        res.writeHead(200, {
-          'Content-Type': 'text/turtle',
-          'Content-Disposition': 'attachment; filename="graph.ttl"'
-        });
-        
-        res.end(serializedGraph);
-        return;
+          
+          res.writeHead(200, {
+            'Content-Type': `text/${requestedFormat}`,
+            'Content-Disposition': `attachment; filename="${filename}"`
+          });
+          
+          res.end(serializedGraph);
+          return;
+        } catch (error: unknown) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+          throw new Error(`Failed to serialize graph: ${errorMessage}`);
+        }
       }
       
       // Read the serialized graph from the file
-      const serializedGraph = await fsp.readFile(memoryFilePath, 'utf8');
-      
-      // Set appropriate headers for RDF download
-      res.writeHead(200, {
-        'Content-Type': 'text/turtle',
-        'Content-Disposition': 'attachment; filename="graph.ttl"'
-      });
-      
-      res.end(serializedGraph);
-    } catch (error) {
+      try {
+        const serializedGraph = await fsp.readFile(memoryFilePath, 'utf8');
+        
+        // Set appropriate headers for RDF download
+        res.writeHead(200, {
+          'Content-Type': `text/${requestedFormat}`,
+          'Content-Disposition': `attachment; filename="${filename}"`
+        });
+        
+        res.end(serializedGraph);
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+        throw new Error(`Failed to read file: ${errorMessage}`);
+      }
+    } catch (error: unknown) {
       console.error('Error handling download request:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Failed to download graph' }));
+      res.end(JSON.stringify({ 
+        error: 'Failed to download graph',
+        details: errorMessage 
+      }));
     }
   }
 }
