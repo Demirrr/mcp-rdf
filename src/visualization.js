@@ -548,4 +548,25 @@ function getCurrentSubgraph() {
     nodes: limitedNodes,
     edges: limitedEdges
   };
+}
+
+function clearGraph() {
+  if (confirm('Are you sure you want to clear the entire RDF graph? This action cannot be undone.')) {
+    // Clear the visualization
+    nodes.clear();
+    edges.clear();
+    currentGraphData = null;
+    
+    // Notify the server to clear the graph
+    socket.emit('clearGraph');
+    
+    // Reset the triple slider
+    tripleSlider.value = 100;
+    tripleCount.textContent = '100';
+    
+    // Reset type filter
+    showOnlyTypeTriples = false;
+    typeFilterButton.textContent = 'Show Only Type/Subclass';
+    typeFilterButton.style.backgroundColor = '#4CAF50';
+  }
 } 

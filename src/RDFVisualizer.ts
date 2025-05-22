@@ -235,8 +235,8 @@ export class RDFVisualizer {
   }
 
   private async get_number_of_triples(currentGraphData: CurrentGraphData) {
-    const count = currentGraphData.edges.length;
-    return `There are ${count} triples in the graph.`;
+    const count = currentGraphData?.edges?.length ?? 0;
+    return `There ${count === 1 ? 'is' : 'are'} ${count} triple${count === 1 ? '' : 's'} in the graph.`;
   }
   
 
