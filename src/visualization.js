@@ -232,10 +232,21 @@ async function handleFileUpload(event) {
       const formData = new FormData();
       formData.append('content', text);
       formData.append('format', fileExtension);
-      const response = await fetch('/upload', {method: 'POST',body: formData});
+      
+      // Let the browser set the correct Content-Type header with boundary
+      const response = await fetch('/upload', {
+        method: 'POST',
+        body: formData
+      });
+      
       const result = await response.json();
-      if (!result.success) {alert('Error loading file: ' + result.error);}
-    } catch (error) { console.error('Error:', error); alert('Error loading file: ' + error.message);}
+      if (!result.success) {
+        alert('Error loading file: ' + result.error);
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      alert('Error loading file: ' + error.message);
+    }
   }
 }
 

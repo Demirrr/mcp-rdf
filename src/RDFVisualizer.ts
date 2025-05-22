@@ -150,25 +150,42 @@ export class RDFVisualizer {
   }
 
   private async handleFileUpload(req: IncomingMessage, res: ServerResponse) {
-    let body = '';
     try {
-      for await (const chunk of req) { body += chunk.toString(); }
+      // Use a more robust approach to parse multipart form data
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) {
+        chunks.push(Buffer.from(chunk));
+      }
+      const body = Buffer.concat(chunks);
       
       // Parse the multipart form data
-      const boundary = req.headers['content-type']?.split('boundary=')[1];
+      const contentType = req.headers['content-type'];
+      if (!contentType || !contentType.includes('multipart/form-data')) {
+        throw new Error('Invalid content type: expected multipart/form-data');
+      }
+
+      const boundary = contentType.split('boundary=')[1];
       if (!boundary) {
         throw new Error('No boundary found in content-type header');
       }
 
-      const parts = body.split('--' + boundary);
+      // Split the body by boundary
+      const parts = body.toString().split('--' + boundary);
       let content = '';
       let format = '';
 
       for (const part of parts) {
         if (part.includes('name="content"')) {
-          content = part.split('\r\n\r\n')[1].trim();
+          // Extract content between the headers and the next boundary
+          const contentMatch = part.match(/\r\n\r\n([\s\S]*?)(?=\r\n--|$)/);
+          if (contentMatch) {
+            content = contentMatch[1].trim();
+          }
         } else if (part.includes('name="format"')) {
-          format = part.split('\r\n\r\n')[1].trim();
+          const formatMatch = part.match(/\r\n\r\n([\s\S]*?)(?=\r\n--|$)/);
+          if (formatMatch) {
+            format = formatMatch[1].trim();
+          }
         }
       }
 
@@ -185,10 +202,10 @@ export class RDFVisualizer {
         this.graphManager = new RDFKnowledgeGraphManager(tempFilePath);
         
         // Read the graph from the temporary file
-        await this.graphManager.readGraph();
+        const graph = await this.graphManager.readGraph();
         
         // Convert and send the visualization data
-        const visualizationData = this.convertToVisualization(await this.graphManager.readGraph());
+        const visualizationData = this.convertToVisualization(graph);
         this.io.emit('graphData', visualizationData);
         
         res.writeHead(200, { 'Content-Type': 'application/json'});
@@ -206,7 +223,10 @@ export class RDFVisualizer {
       res.writeHead(400, {
         'Content-Type': 'application/json'
       });
-      res.end(JSON.stringify({error: 'Invalid RDF file format: ' + (error instanceof Error ? error.message : String(error))}));
+      res.end(JSON.stringify({
+        success: false,
+        error: 'Invalid RDF file format: ' + (error instanceof Error ? error.message : String(error))
+      }));
     }
   }
 
