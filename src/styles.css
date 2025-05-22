@@ -170,6 +170,13 @@ button:hover {
   border: 1px solid var(--input-border-color);
   border-radius: var(--input-radius);
   margin-right: 8px;
+  resize: none;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: 1.4;
+  min-height: 60px;
+  max-height: 150px;
+  overflow-y: auto;
 }
 
 .chat-message {

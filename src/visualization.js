@@ -249,7 +249,13 @@ function handleTripleSliderInput(e) {
 
 function handleChatKeyPress(e) {
   if (e.key === 'Enter') {
-    sendMessage();
+    if (e.shiftKey) {
+      // Let the default behavior handle the newline in textarea
+      return;
+    } else {
+      e.preventDefault(); // Prevent default Enter behavior
+      sendMessage();
+    }
   }
 }
 
