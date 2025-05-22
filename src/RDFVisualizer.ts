@@ -77,6 +77,33 @@ export class RDFVisualizer {
             additionalProperties: false
           } 
         }
+      },
+      {
+        type: "function",
+        function: {
+          name: "addTriples",
+          description: "Add multiple triples to the graph.",
+          parameters: {
+            type: "object",
+            properties: {
+              triples: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    subject: { type: "string" },
+                    predicate: { type: "string" },
+                    object: { type: "string" }
+                  },
+                  required: ["subject", "predicate", "object"],
+                  additionalProperties: false
+                }
+              }
+            },
+            required: ["triples"],
+            additionalProperties: false
+          }
+        }
       }
     ] as ChatCompletionTool[];
   }
@@ -276,6 +303,10 @@ export class RDFVisualizer {
             const result = await this.handleAddTriple(args);
             functionResult = result.message;
           }
+          else if (functionName === "addTriples") {
+            const result = await this.handleAddTriples(args);
+            functionResult = result.message;
+          }
           else {console.warn(`Unknown function: ${functionName}`);}
 
           // Add assistant's tool call to chat history
@@ -337,6 +368,14 @@ export class RDFVisualizer {
     });
     this.fetchAndSendGraphData(this.io);
     return { success: true, message: 'Triple added successfully' };
+  }
+
+  private async handleAddTriples(args: { triples: AddTripleArgs[] }): Promise<{ success: true; message: string }> {
+    await this.graphManager.updateGraph(graph => {
+      graph.triples.push(...args.triples);
+    });
+    this.fetchAndSendGraphData(this.io);
+    return { success: true, message: `Successfully added ${args.triples.length} triples` };
   }
   
 
