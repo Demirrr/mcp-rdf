@@ -34,46 +34,49 @@ body {
 .controls {
   position: absolute;
   top: 20px;
-  right: 20px;
+  left: 20px;
   z-index: 1000;
-  padding: 15px;
+  padding: 10px;
   background-color: var(--main-bg-color);
   border: 1px solid var(--main-border-color);
   border-radius: var(--input-radius);
-  text-align: right;
+  text-align: left;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 5px;
+  width: 390px;
 }
 
 .input-group {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  margin-bottom: 5px;
+  justify-content: flex-start;
+  margin-bottom: 2px;
 }
 
 label {
-  margin-left: 10px;
-  font-size: 0.9rem;
+  margin-right: 10px;
+  margin-left: 0;
+  font-size: 0.85rem;
 }
 
 input[type="text"] {
-  padding: 8px;
+  padding: 6px;
   border: 1px solid var(--input-border-color);
   border-radius: var(--input-radius);
   margin-left: 5px;
-  width: 200px;
+  width: 180px;
 }
 
 button {
-  padding: 8px 16px;
+  padding: 6px 12px;
   background-color: var(--button-bg);
   color: white;
   border: none;
   border-radius: var(--input-radius);
   cursor: pointer;
   transition: background-color 0.3s ease;
+  font-size: 0.9rem;
 }
 
 button:hover {
@@ -92,6 +95,12 @@ button:hover {
 .search-container {
   position: relative;
   width: 100%;
+  margin-bottom: 5px;
+}
+
+.search-container input[type="text"] {
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .search-results {
@@ -106,6 +115,8 @@ button:hover {
   overflow-y: auto;
   z-index: 1001;
   display: none;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .search-result-item {
@@ -127,10 +138,10 @@ button:hover {
 /* Chat interface */
 .chat-container {
   position: absolute;
-  top: 550px;
+  top: 20px;
   right: 20px;
   width: 390px;
-  height: 400px;
+  height: 500px;
   background-color: rgba(255, 255, 255, 0.95);
   border: 1px solid var(--input-border-color);
   border-radius: var(--input-radius);
@@ -159,6 +170,13 @@ button:hover {
   border: 1px solid var(--input-border-color);
   border-radius: var(--input-radius);
   margin-right: 8px;
+  resize: none;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: 1.4;
+  min-height: 60px;
+  max-height: 150px;
+  overflow-y: auto;
 }
 
 .chat-message {

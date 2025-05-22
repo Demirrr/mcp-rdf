@@ -90,7 +90,7 @@ export class RDFVisualizer {
         await this.handleAddTripleRequest(req, res);
       } else if (req.url === '/chat' && req.method === 'POST') {
         await this.handleChatRequest(req, res);
-      } else if (req.url === '/download' && req.method === 'GET') {
+      } else if (req.url?.startsWith('/download')) {
         await this.handleDownloadRequest(req, res);
       } else if (req.url?.startsWith('/src/')) {
         // Handle static files from src directory
@@ -150,25 +150,42 @@ export class RDFVisualizer {
   }
 
   private async handleFileUpload(req: IncomingMessage, res: ServerResponse) {
-    let body = '';
     try {
-      for await (const chunk of req) { body += chunk.toString(); }
+      // Use a more robust approach to parse multipart form data
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) {
+        chunks.push(Buffer.from(chunk));
+      }
+      const body = Buffer.concat(chunks);
       
       // Parse the multipart form data
-      const boundary = req.headers['content-type']?.split('boundary=')[1];
+      const contentType = req.headers['content-type'];
+      if (!contentType || !contentType.includes('multipart/form-data')) {
+        throw new Error('Invalid content type: expected multipart/form-data');
+      }
+
+      const boundary = contentType.split('boundary=')[1];
       if (!boundary) {
         throw new Error('No boundary found in content-type header');
       }
 
-      const parts = body.split('--' + boundary);
+      // Split the body by boundary
+      const parts = body.toString().split('--' + boundary);
       let content = '';
       let format = '';
 
       for (const part of parts) {
         if (part.includes('name="content"')) {
-          content = part.split('\r\n\r\n')[1].trim();
+          // Extract content between the headers and the next boundary
+          const contentMatch = part.match(/\r\n\r\n([\s\S]*?)(?=\r\n--|$)/);
+          if (contentMatch) {
+            content = contentMatch[1].trim();
+          }
         } else if (part.includes('name="format"')) {
-          format = part.split('\r\n\r\n')[1].trim();
+          const formatMatch = part.match(/\r\n\r\n([\s\S]*?)(?=\r\n--|$)/);
+          if (formatMatch) {
+            format = formatMatch[1].trim();
+          }
         }
       }
 
@@ -185,10 +202,10 @@ export class RDFVisualizer {
         this.graphManager = new RDFKnowledgeGraphManager(tempFilePath);
         
         // Read the graph from the temporary file
-        await this.graphManager.readGraph();
+        const graph = await this.graphManager.readGraph();
         
         // Convert and send the visualization data
-        const visualizationData = this.convertToVisualization(await this.graphManager.readGraph());
+        const visualizationData = this.convertToVisualization(graph);
         this.io.emit('graphData', visualizationData);
         
         res.writeHead(200, { 'Content-Type': 'application/json'});
@@ -206,7 +223,10 @@ export class RDFVisualizer {
       res.writeHead(400, {
         'Content-Type': 'application/json'
       });
-      res.end(JSON.stringify({error: 'Invalid RDF file format: ' + (error instanceof Error ? error.message : String(error))}));
+      res.end(JSON.stringify({
+        success: false,
+        error: 'Invalid RDF file format: ' + (error instanceof Error ? error.message : String(error))
+      }));
     }
   }
 
@@ -415,66 +435,100 @@ export class RDFVisualizer {
 
   private async handleDownloadRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
     try {
+      if (!req.url) {
+        throw new Error('No URL provided in request');
+      }
+
       const graph = await this.graphManager.readGraph();
       const memoryFilePath = this.graphManager.getMemoryFilePath();
       
+      // Parse query parameters for filename and format
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const requestedFormat = url.searchParams.get('format') || 'turtle';
+      const requestedFilename = url.searchParams.get('filename') || 'graph';
+      
+      // Validate format
+      const validFormats = ['turtle', 'ntriples', 'nquads', 'trig'];
+      if (!validFormats.includes(requestedFormat)) {
+        throw new Error(`Invalid format: ${requestedFormat}. Valid formats are: ${validFormats.join(', ')}`);
+      }
+      
+      // Create filename with proper extension
+      const extension = requestedFormat === 'turtle' ? 'ttl' : requestedFormat;
+      const filename = `${requestedFilename}.${extension}`;
+      
       if (!memoryFilePath) {
         // If no file path is provided, serialize the graph in memory
-        const writer = new N3.Writer({ format: 'Turtle' });
-        for (const triple of graph.triples) {
-          const subjectNode = namedNode(triple.subject);
-          const predicateNode = namedNode(triple.predicate);
-          let objectTerm: NamedNode | Literal;
-          
-          if (triple.object.startsWith('"') || triple.object.includes('^^') || triple.object.includes('@')) {
-            try {
-              const parser = new N3.Parser();
-              const quads = parser.parse(`_:s _:p ${triple.object} .`);
-              if (quads.length > 0 && quads[0].object.termType === 'Literal') {
-                objectTerm = quads[0].object as Literal;
-              } else {
+        const writer = new N3.Writer({ format: requestedFormat });
+        
+        try {
+          for (const triple of graph.triples) {
+            const subjectNode = namedNode(triple.subject);
+            const predicateNode = namedNode(triple.predicate);
+            let objectTerm: NamedNode | Literal;
+            
+            if (triple.object.startsWith('"') || triple.object.includes('^^') || triple.object.includes('@')) {
+              try {
+                const parser = new N3.Parser();
+                const quads = parser.parse(`_:s _:p ${triple.object} .`);
+                if (quads.length > 0 && quads[0].object.termType === 'Literal') {
+                  objectTerm = quads[0].object as Literal;
+                } else {
+                  objectTerm = literal(triple.object);
+                }
+              } catch (e) {
                 objectTerm = literal(triple.object);
               }
-            } catch (e) {
-              objectTerm = literal(triple.object);
+            } else {
+              objectTerm = namedNode(triple.object);
             }
-          } else {
-            objectTerm = namedNode(triple.object);
+            
+            writer.addQuad(subjectNode, predicateNode, objectTerm, defaultGraph());
           }
           
-          writer.addQuad(subjectNode, predicateNode, objectTerm, defaultGraph());
-        }
-        
-        const serializedGraph = await new Promise<string>((resolve, reject) => {
-          writer.end((error: Error | null, result: string) => {
-            if (error) reject(error);
-            else resolve(result);
+          const serializedGraph = await new Promise<string>((resolve, reject) => {
+            writer.end((error: Error | null, result: string) => {
+              if (error) reject(error);
+              else resolve(result);
+            });
           });
-        });
-        
-        res.writeHead(200, {
-          'Content-Type': 'text/turtle',
-          'Content-Disposition': 'attachment; filename="graph.ttl"'
-        });
-        
-        res.end(serializedGraph);
-        return;
+          
+          res.writeHead(200, {
+            'Content-Type': `text/${requestedFormat}`,
+            'Content-Disposition': `attachment; filename="${filename}"`
+          });
+          
+          res.end(serializedGraph);
+          return;
+        } catch (error: unknown) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+          throw new Error(`Failed to serialize graph: ${errorMessage}`);
+        }
       }
       
       // Read the serialized graph from the file
-      const serializedGraph = await fsp.readFile(memoryFilePath, 'utf8');
-      
-      // Set appropriate headers for RDF download
-      res.writeHead(200, {
-        'Content-Type': 'text/turtle',
-        'Content-Disposition': 'attachment; filename="graph.ttl"'
-      });
-      
-      res.end(serializedGraph);
-    } catch (error) {
+      try {
+        const serializedGraph = await fsp.readFile(memoryFilePath, 'utf8');
+        
+        // Set appropriate headers for RDF download
+        res.writeHead(200, {
+          'Content-Type': `text/${requestedFormat}`,
+          'Content-Disposition': `attachment; filename="${filename}"`
+        });
+        
+        res.end(serializedGraph);
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+        throw new Error(`Failed to read file: ${errorMessage}`);
+      }
+    } catch (error: unknown) {
       console.error('Error handling download request:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Failed to download graph' }));
+      res.end(JSON.stringify({ 
+        error: 'Failed to download graph',
+        details: errorMessage 
+      }));
     }
   }
 }
