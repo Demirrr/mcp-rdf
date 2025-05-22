@@ -4,7 +4,7 @@ import { Server as SocketIOServer, Socket as IOSocket } from 'socket.io';
 import { readFileSync } from 'fs';
 import path from 'path';
 import OpenAI from 'openai';
-import { ChatCompletionTool } from 'openai/resources/chat/completions';
+import { ChatCompletionTool, ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 import fsp from 'fs/promises';
 import { CurrentGraphData, ChatRequest, AddTripleArgs, ClientSocket, VisualizationData } from './interfaces/interface_visualizer';
 import * as N3 from 'n3';
@@ -20,6 +20,7 @@ export class RDFVisualizer {
   private openai: OpenAI;
   private model_name: string;
   private tools: ChatCompletionTool[];
+  private chatHistory: ChatCompletionMessageParam[] = [];
 
   constructor(graphManager: RDFKnowledgeGraphManager, port: number = 3000,templatePath: string = './src/visualization.html') {
     this.graphManager = graphManager;
@@ -176,7 +177,6 @@ export class RDFVisualizer {
 
       for (const part of parts) {
         if (part.includes('name="content"')) {
-          // Extract content between the headers and the next boundary
           const contentMatch = part.match(/\r\n\r\n([\s\S]*?)(?=\r\n--|$)/);
           if (contentMatch) {
             content = contentMatch[1].trim();
@@ -193,25 +193,17 @@ export class RDFVisualizer {
         throw new Error('Missing content or format in upload');
       }
 
-      // Create a temporary file with the correct extension
       const tempFilePath = path.join(process.cwd(), `temp_upload.${format}`);
       await fsp.writeFile(tempFilePath, content, 'utf8');
 
       try {
-        // Set the memory file path to the temporary file
         this.graphManager = new RDFKnowledgeGraphManager(tempFilePath);
-        
-        // Read the graph from the temporary file
         const graph = await this.graphManager.readGraph();
-        
-        // Convert and send the visualization data
         const visualizationData = this.convertToVisualization(graph);
         this.io.emit('graphData', visualizationData);
         
-        res.writeHead(200, { 'Content-Type': 'application/json'});
-        res.end(JSON.stringify({success: true}));
+        this.sendSuccessResponse(res, { message: 'File uploaded successfully' });
       } finally {
-        // Clean up the temporary file
         try {
           await fsp.unlink(tempFilePath);
         } catch (error) {
@@ -220,31 +212,25 @@ export class RDFVisualizer {
       }
     } catch (error) {
       console.error('Error processing uploaded file:', error);
-      res.writeHead(400, {
-        'Content-Type': 'application/json'
-      });
-      res.end(JSON.stringify({
-        success: false,
-        error: 'Invalid RDF file format: ' + (error instanceof Error ? error.message : String(error))
-      }));
+      this.sendErrorResponse(res, 400, 'Invalid RDF file format: ' + (error instanceof Error ? error.message : String(error)));
     }
   }
 
   private async handleAddTripleRequest(req: IncomingMessage, res: ServerResponse) {
     let body = '';
     try {
-      for await (const chunk of req) {body += chunk.toString();}
+      for await (const chunk of req) {
+        body += chunk.toString();
+      }
       const newTriple: Triple = JSON.parse(body);
       await this.graphManager.updateGraph(graph => {
         graph.triples.push(newTriple);
       });
       this.fetchAndSendGraphData(this.io);
-      res.writeHead(200, {'Content-Type': 'application/json'});
-      res.end(JSON.stringify({success: true, message: 'Triple added successfully' }));
+      this.sendSuccessResponse(res, { message: 'Triple added successfully' });
     } catch (error) {
       console.error('Error adding triple via HTTP:', error);
-      res.writeHead(400, {'Content-Type': 'application/json'});
-      res.end(JSON.stringify({ error: 'Invalid triple format'}));
+      this.sendErrorResponse(res, 400, 'Invalid triple format');
     }
   }
 
@@ -261,11 +247,14 @@ export class RDFVisualizer {
       const requestData: ChatRequest = JSON.parse(body);
       const { message, currentGraphData } = requestData;
 
+      // Add user message to chat history
+      this.chatHistory.push({ role: "user", content: message });
+
       const initialResponse = await this.openai.chat.completions.create({
         model: this.model_name,
         messages: [
           { role: "system", content: `You are an AI assistant that helps users interact with an RDF graph visualization. You can help users understand the graph structure, add new triples, and modify the visualization settings.`},
-          { role: "user", content: message }
+          ...this.chatHistory
         ],
         tools: this.tools,
         tool_choice: "auto"
@@ -281,39 +270,57 @@ export class RDFVisualizer {
 
           let functionResult = "";
           if (functionName === "get_number_of_triples") {
-          functionResult = await this.get_number_of_triples(currentGraphData);}
+            functionResult = await this.get_number_of_triples(currentGraphData);
+          }
           else if (functionName === "addTriple") {
             const result = await this.handleAddTriple(args);
             functionResult = result.message;
           }
           else {console.warn(`Unknown function: ${functionName}`);}
 
-          // @TODO: Do we need to add the functionResult to the message?
+          // Add assistant's tool call to chat history
+          this.chatHistory.push({
+            role: "assistant",
+            content: null,
+            tool_calls: toolCalls.map(tc => ({
+              id: tc.id,
+              type: "function",
+              function: {
+                name: tc.function.name,
+                arguments: tc.function.arguments,
+              }
+            }))
+          });
+
+          // Add tool response to chat history
+          this.chatHistory.push({
+            role: "tool",
+            tool_call_id: toolCall.id,
+            content: functionResult
+          });
+
           const followup = await this.openai.chat.completions.create({
             model: this.model_name,
             messages: [
-              { role: "user", content: message },
-              {
-                role: "assistant",
-                tool_calls: toolCalls.map(tc => ({
-                  id: tc.id,
-                  type: "function",
-                  function: {
-                    name: tc.function.name,
-                    arguments: tc.function.arguments,
-                  }
-                }))
-              },
-              {
-                role: "tool",
-                tool_call_id: toolCall.id,
-                content: functionResult
-              }
+              { role: "system", content: `You are an AI assistant that helps users interact with an RDF graph visualization. You can help users understand the graph structure, add new triples, and modify the visualization settings.`},
+              ...this.chatHistory
             ],
           });
+
+          // Add assistant's final response to chat history
+          this.chatHistory.push({
+            role: "assistant",
+            content: followup.choices[0].message.content || ""
+          });
+
           this.sendSuccessResponse(res, { content: followup.choices[0].message.content });
         }
       } else {
+        // Add assistant's response to chat history
+        this.chatHistory.push({
+          role: "assistant",
+          content: initialMessage.content || ""
+        });
         this.sendSuccessResponse(res, { content: initialMessage.content });
       }
     } catch (error) {
@@ -335,16 +342,17 @@ export class RDFVisualizer {
 
   private sendSuccessResponse(res: ServerResponse, data: any, statusCode: number = 200): void {
     res.writeHead(statusCode, { 'Content-Type': 'application/json' });
-    console.debug("Sending success response:", JSON.stringify(data));
-    res.end(JSON.stringify(data));
+    res.end(JSON.stringify({ success: true, ...data }));
   }
   
   private sendErrorResponse(res: ServerResponse, statusCode: number, message: string): void {
     res.writeHead(statusCode, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: message }));
+    res.end(JSON.stringify({ success: false, error: message }));
   }
   
-  private handleNotFound(res: ServerResponse) { res.writeHead(404); res.end('Not found'); }
+  private handleNotFound(res: ServerResponse) {
+    this.sendErrorResponse(res, 404, 'Not found');
+  }
 
   private handleSocketConnection = (socket: ClientSocket) => {
     console.log('Client connected:', socket.id);

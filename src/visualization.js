@@ -1,8 +1,8 @@
 /**
- * RDF Graph Visualization Application
- * This module handles the visualization and interaction with RDF graph data
- */
-// Constants and configuration
+ * Network visualization configuration
+ * Contains all the settings for the vis.js network visualization
+*/
+
 const NETWORK_OPTIONS = {
   nodes: {
     shape: 'dot',
@@ -58,10 +58,7 @@ const typeFilterButton = document.getElementById('typeFilterButton');
 const fileInput = document.getElementById('fileInput');
 
 // Event Listeners
-socket.on('connect', () => {
-  console.log('Connected to WebSocket');
-  socket.emit('requestGraph');
-});
+socket.on('connect', () => { console.log('Connected to WebSocket'); socket.emit('requestGraph');});
 
 socket.on('graphData', function(data) {
   currentGraphData = data;

@@ -62,6 +62,10 @@ export class RDFKnowledgeGraphManager {
   }
 
    private shortenIRI(graph: RDFGraph, iri: string): string {
+    if (!iri) {
+      throw new Error('IRI cannot be empty or undefined');
+    }
+
     // First try to find an existing prefix match from common prefixes
     for (const [prefix, shortPrefix] of this.commonPrefixes) {
       if (iri.startsWith(prefix)) {
@@ -121,6 +125,10 @@ export class RDFKnowledgeGraphManager {
    * @returns The full IRI string.
    */
   private expandIRI(prefixMap: Map<string, string>, shortenedIri: string): string {
+    if (!shortenedIri) {
+      throw new Error('Shortened IRI cannot be empty or undefined');
+    }
+
     const colonIndex = shortenedIri.indexOf(':');
 
     // If no colon, assume it's already a full IRI or relative IRI
@@ -154,10 +162,17 @@ export class RDFKnowledgeGraphManager {
   }
 
   public async updateGraph(updateFn: (graph: RDFGraph) => void): Promise<void> {
-    updateFn(this.graph);
-    // Optionally persist to disk if memoryFilePath is set
-    if (this.memoryFilePath) {
-      await this.saveGraph(this.graph);
+    if (typeof updateFn !== 'function') {
+      throw new Error('updateFn must be a function');
+    }
+
+    try {
+      updateFn(this.graph);
+      if (this.memoryFilePath) {
+        await this.saveGraph(this.graph);
+      }
+    } catch (error) {
+      throw new Error(`Failed to update graph: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
