@@ -8,22 +8,28 @@
   --color-background: #fdfdfd;
   --color-border: lightgray;
   --color-input-border: #ccc;
-  --color-highlight: #ffeb3b;
+  --color-highlight: #ffeb3b; /* For search results highlight */
   --color-chat-user: #e3f2fd;
   --color-chat-assistant: #f5f5f5;
-  --color-overlay: rgba(0, 0, 0, 0.5);
-  
-  /* Spacing */
-  --spacing-xs: 5px;
-  --spacing-sm: 8px;
-  --spacing-md: 10px;
-  --spacing-lg: 15px;
-  --spacing-xl: 20px;
-  
+  --color-overlay: rgba(0, 0, 0, 0.6); /* Adjusted for download dialog background */
+  --color-panel-header: #f0f0f0;
+  --color-danger-button: #ff4444; /* Added for clear graph button */
+  --color-danger-button-hover: #cc0000; /* Added for clear graph button hover */
+  --color-type-node-bg: #FF6B6B; /* For nodes involved in type/subclass relationships */
+  --color-type-node-border: #FF0000;
+  --color-type-node-highlight-bg: #FFB6B6;
+
+  /* Spacing - Reduced for more compact design */
+  --spacing-xs: 3px;
+  --spacing-sm: 6px;
+  --spacing-md: 8px;
+  --spacing-lg: 12px;
+  --spacing-xl: 16px;
+
   /* Border Radius */
   --radius-sm: 4px;
-  --radius-md: 8px;
-  
+  --radius-md: 6px;
+
   /* Z-index */
   --z-index-base: 1;
   --z-index-overlay: 1000;
@@ -40,67 +46,263 @@ body {
   align-items: center;
   font-family: sans-serif;
   background-color: var(--color-background);
+  overflow: hidden; /* Prevent body scrolling if network fills screen */
 }
 
 /* Network Container */
 #mynetwork {
-  width: 100%;
-  height: 100%;
+  width: 100vw; /* Use viewport width */
+  height: 100vh; /* Use viewport height */
   border: 1px solid var(--color-border);
+  background-color: #f8f8f8; /* Lighter background for the network */
 }
 
-/* Controls Panel */
-.controls {
+/* Panel Base Styles - More compact */
+.draggable {
   position: absolute;
-  top: var(--spacing-xl);
-  left: var(--spacing-xl);
-  z-index: var(--z-index-base);
-  padding: var(--spacing-md);
-  background-color: rgba(240, 240, 240, 0.8);
+  background: white;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  text-align: left;
+  border-radius: var(--radius-md);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+  resize: both;
+  min-width: 240px; /* Reduced from 300px */
+  min-height: 80px; /* Reduced from 100px */
+  z-index: var(--z-index-base);
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-xs);
-  width: 390px;
+  cursor: grab;
+  transition: box-shadow 0.3s ease;
 }
 
-/* Form Elements */
+.draggable:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2); /* Enhanced shadow on hover */
+}
+
+.draggable:active {
+  cursor: grabbing; /* Indicate actively dragging */
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background-color: var(--color-panel-header);
+  border-bottom: 1px solid var(--color-border);
+  border-radius: var(--radius-md) var(--radius-md) 0 0; /* Match panel radius */
+  font-weight: bold;
+  font-size: 0.95em; /* Reduced from 1.1em */
+  color: #555;
+  user-select: none; /* Prevent text selection during drag */
+}
+
+.minimize-btn {
+  background: var(--color-panel-header); /* Use panel header color */
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 2px 6px; /* Reduced from 4px 8px */
+  cursor: pointer;
+  font-weight: bold;
+  color: #555;
+  font-size: 1em; /* Reduced from 1.2rem */
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.minimize-btn:hover {
+  background-color: #d0d0d0;
+  color: #333;
+}
+
+.panel-content {
+  padding: var(--spacing-sm); /* Reduced from var(--spacing-md) */
+  flex-grow: 1; /* Allow content to take available space in flex column */
+  overflow-y: auto; /* Enable scrolling for content if it overflows */
+  transition: all 0.3s ease-out; /* Smooth transition for collapsing/expanding */
+  display: block; /* Default state */
+  max-height: none; /* Reset max-height for flex-grow to work */
+}
+
+/* Collapsed state */
+.panel-content.collapsed {
+  display: none; /* Hidden by JS */
+  padding: 0;
+  height: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Specific Panel Positioning and Sizing - Much more compact */
+.chat-container {
+  top: var(--spacing-lg);
+  right: var(--spacing-lg);
+  width: 240px; /* Reduced from 300px */
+  height: 280px; /* Reduced from 350px */
+  display: flex;
+  flex-direction: column;
+}
+
+.controls-container {
+  bottom: var(--spacing-lg);
+  left: var(--spacing-lg);
+  width: 240px; /* Reduced from 300px */
+  max-height: 60vh; /* Reduced from 80vh */
+  display: flex;
+  flex-direction: column;
+}
+
+/* Chat Panel Specifics - More compact */
+.chat-messages {
+  flex-grow: 1;
+  overflow-y: auto;
+  border: 1px solid var(--color-input-border);
+  padding: var(--spacing-sm); /* Reduced from var(--spacing-md) */
+  margin-bottom: var(--spacing-sm); /* Reduced from var(--spacing-md) */
+  background-color: var(--color-background);
+  min-height: 120px; /* Reduced from 150px */
+  max-height: 200px; /* Reduced from 300px */
+  border-radius: var(--radius-sm);
+  display: flex; /* Enable flex for messages to align */
+  flex-direction: column; /* Stack messages vertically */
+  font-size: 0.85em; /* Smaller font for chat */
+}
+
+.chat-input-container {
+  display: flex;
+  gap: var(--spacing-sm); /* Reduced from var(--spacing-md) */
+  padding-top: var(--spacing-sm); /* Reduced from var(--spacing-md) */
+  border-top: 1px solid var(--color-input-border);
+}
+
+.chat-input {
+  flex-grow: 1;
+  padding: var(--spacing-xs); /* Reduced from var(--spacing-sm) */
+  border: 1px solid var(--color-input-border);
+  border-radius: var(--radius-sm);
+  font-size: 0.85em; /* Reduced from 0.95em */
+  resize: vertical; /* Allow vertical resizing */
+  min-height: 24px; /* Reduced from 30px */
+  max-height: 80px; /* Reduced from 120px */
+  font-family: inherit; /* Inherit font from body */
+  line-height: 1.3; /* Reduced from 1.4 */
+}
+
+.chat-message {
+  padding: var(--spacing-xs) var(--spacing-sm); /* Reduced padding */
+  margin-bottom: var(--spacing-xs); /* Reduced from var(--spacing-sm) */
+  border-radius: 12px; /* Slightly smaller pill shape */
+  word-wrap: break-word;
+  max-width: 90%; /* Increased from 85% to use more space */
+  font-size: 0.85em; /* Smaller text */
+  line-height: 1.3;
+}
+
+.user-message {
+  background-color: var(--color-chat-user);
+  align-self: flex-end; /* Align user messages to the right */
+  margin-left: auto; /* Push user messages to the right */
+  border-bottom-right-radius: var(--radius-sm); /* Sharpen bottom-right corner */
+}
+
+.assistant-message {
+  background-color: var(--color-chat-assistant);
+  align-self: flex-start; /* Align assistant messages to the left */
+  margin-right: auto; /* Push assistant messages to the left */
+  border-bottom-left-radius: var(--radius-sm); /* Sharpen bottom-left corner */
+}
+
+/* Controls Panel Specifics - More compact */
+.section-title {
+  font-size: 0.85em; /* Reduced from 0.95em */
+  color: #444;
+  margin-top: var(--spacing-sm); /* Reduced from var(--spacing-md) */
+  margin-bottom: var(--spacing-xs); /* Reduced from var(--spacing-sm) */
+  border-bottom: 1px solid #eee;
+  padding-bottom: 2px; /* Reduced from var(--spacing-xs) */
+  font-weight: 600;
+}
+
+.section-title:first-child {
+  margin-top: 0;
+}
+
 .input-group {
+  margin-bottom: var(--spacing-xs); /* Reduced from var(--spacing-sm) */
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  margin-bottom: 2px;
+  gap: var(--spacing-xs);
 }
 
 label {
-  margin-right: var(--spacing-md);
+  flex-shrink: 0;
+  font-size: 0.8em; /* Reduced from 0.85em */
+  color: #555;
+  margin-right: 0;
   margin-left: 0;
-  font-size: 0.85rem;
+  font-weight: 500;
 }
 
 input[type="text"] {
-  padding: var(--spacing-xs);
+  flex-grow: 1;
+  padding: 2px var(--spacing-xs); /* Reduced from var(--spacing-xs) */
   border: 1px solid var(--color-input-border);
   border-radius: var(--radius-sm);
-  margin-left: var(--spacing-xs);
-  width: 180px;
+  font-size: 0.8em; /* Reduced from 0.9em */
+  width: auto;
+  margin-left: 0;
+  min-height: 20px; /* Added minimum height */
+}
+
+/* Triple Slider Group - More compact */
+.triple-slider-group {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  margin-bottom: var(--spacing-sm);
+}
+
+.triple-slider-group label {
+  margin-bottom: 0;
+  min-width: 60px; /* Ensure label doesn't wrap */
+}
+
+.triple-slider-group input[type="range"] {
+  flex-grow: 1;
+  width: auto; /* Allow flex to manage width */
+  margin-left: 0;
+  height: 20px; /* Slightly smaller slider */
+}
+
+.triple-slider-group span {
+  width: 30px; /* Reduced from 35px */
+  text-align: right;
+  font-weight: bold;
+  color: #333;
+  font-size: 0.8em; /* Reduced from 0.9em */
 }
 
 button {
-  padding: var(--spacing-xs) var(--spacing-md);
   background-color: var(--color-primary);
   color: white;
+  padding: var(--spacing-xs) var(--spacing-sm); /* Reduced padding */
   border: none;
   border-radius: var(--radius-sm);
   cursor: pointer;
+  font-size: 0.8em; /* Reduced from 0.9em */
+  width: 100%; /* Full width by default for controls buttons */
+  margin-top: var(--spacing-xs);
   transition: background-color 0.3s ease;
-  font-size: 0.9rem;
+  min-height: 28px; /* Ensure buttons aren't too small */
 }
 
 button:hover {
   background-color: var(--color-primary-hover);
+}
+
+button:disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
 }
 
 #downloadButton {
@@ -111,11 +313,27 @@ button:hover {
   background-color: var(--color-secondary-hover);
 }
 
+.danger-button {
+  background-color: var(--color-danger-button) !important;
+}
+
+.danger-button:hover {
+  background-color: var(--color-danger-button-hover) !important;
+}
+
+/* Chat input container button - more compact */
+.chat-input-container button {
+  width: auto; /* Override 100% width */
+  padding: var(--spacing-xs) var(--spacing-sm);
+  margin-top: 0; /* Override general button margin */
+  min-width: 50px;
+}
+
 /* Search Component */
 .search-container {
   position: relative;
   width: 100%;
-  margin-bottom: var(--spacing-xs);
+  margin-bottom: var(--spacing-sm); /* Reduced from var(--spacing-md) */
 }
 
 .search-container input[type="text"] {
@@ -130,20 +348,27 @@ button:hover {
   right: 0;
   background: white;
   border: 1px solid var(--color-input-border);
-  border-radius: var(--radius-sm);
-  max-height: 200px;
+  border-top: none; /* No top border to blend with input visually */
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm); /* Rounded only at bottom */
+  max-height: 150px; /* Reduced from 200px */
   overflow-y: auto;
   z-index: var(--z-index-dropdown);
   display: none;
   width: 100%;
   box-sizing: border-box;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
 }
 
 .search-result-item {
-  padding: var(--spacing-sm);
+  padding: var(--spacing-xs); /* Reduced from var(--spacing-sm) */
   cursor: pointer;
   border-bottom: 1px solid #eee;
   transition: background-color 0.2s ease;
+  font-size: 0.8em; /* Smaller font for search results */
+}
+
+.search-result-item:last-child {
+  border-bottom: none;
 }
 
 .search-result-item:hover {
@@ -152,65 +377,101 @@ button:hover {
 
 .search-result-item .highlight {
   background-color: var(--color-highlight);
-  padding: 2px;
+  font-weight: bold;
 }
 
-/* Chat Interface */
-.chat-container {
-  position: absolute;
-  top: var(--spacing-xl);
-  right: var(--spacing-xl);
-  width: 390px;
-  height: 500px;
-  background-color: rgba(255, 255, 255, 0.95);
-  border: 1px solid var(--color-input-border);
-  border-radius: var(--radius-sm);
+/* Download Dialog Styles */
+#downloadDialogContainer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--color-overlay);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: var(--z-index-overlay);
+  visibility: hidden;
+  opacity: 0;
+  transition: visibility 0s, opacity 0.3s ease;
+}
+
+#downloadDialogContainer.visible {
+  visibility: visible;
+  opacity: 1;
+}
+
+.download-dialog-content {
+  background: white;
+  padding: var(--spacing-lg);
+  border-radius: var(--radius-md);
+  min-width: 280px; /* Reduced from 300px */
+  max-width: 90vw;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
   display: flex;
   flex-direction: column;
-  z-index: var(--z-index-base);
-  margin-left: var(--spacing-xl);
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+  gap: var(--spacing-md);
 }
 
-.chat-messages {
-  flex-grow: 1;
-  overflow-y: auto;
-  padding: var(--spacing-md);
+.download-dialog-content h3 {
+  margin-top: 0;
+  color: #333;
+  text-align: center;
+  border-bottom: 1px solid #eee;
+  padding-bottom: var(--spacing-sm);
+  font-size: 1em; /* Slightly smaller */
 }
 
-.chat-input-container {
-  display: flex;
-  padding: var(--spacing-md);
-  border-top: 1px solid var(--color-input-border);
+.download-dialog .form-group label {
+  font-weight: bold;
+  margin-bottom: var(--spacing-sm);
+  display: block;
+  font-size: 0.9em; /* Smaller font */
 }
 
-.chat-input {
-  flex-grow: 1;
+.download-dialog .form-group input,
+.download-dialog .form-group select {
+  width: 100%;
   padding: var(--spacing-sm);
   border: 1px solid var(--color-input-border);
   border-radius: var(--radius-sm);
-  margin-right: var(--spacing-sm);
-  resize: none;
-  font-family: inherit;
-  font-size: inherit;
-  line-height: 1.4;
-  min-height: 60px;
-  max-height: 150px;
-  overflow-y: auto;
+  box-sizing: border-box;
+  font-size: 0.9em; /* Smaller font */
 }
 
-.chat-message {
-  margin-bottom: var(--spacing-sm);
-  padding: var(--spacing-sm);
+.download-dialog .dialog-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-lg);
+}
+
+.download-dialog .dialog-buttons button {
+  padding: var(--spacing-sm) var(--spacing-lg);
+  border: none;
   border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 0.9em; /* Smaller font */
+  width: auto;
+  margin-top: 0;
+  min-width: 70px; /* Ensure buttons aren't too narrow */
 }
 
-.user-message {
-  background-color: var(--color-chat-user);
-  margin-left: var(--spacing-xl);
+#downloadCancel {
+  background: #f0f0f0;
+  color: #555;
 }
 
-.assistant-message {
-  background-color: var(--color-chat-assistant);
-  margin-right: var(--spacing-xl);
+#downloadCancel:hover {
+  background: #e0e0e0;
+}
+
+#downloadConfirm {
+  background: var(--color-secondary);
+  color: white;
+}
+
+#downloadConfirm:hover {
+  background: var(--color-secondary-hover);
 }

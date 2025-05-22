@@ -1,52 +1,86 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>RDF Graph Visualization</title>
+  <link rel="icon" href="/favicon.ico" type="image/x-icon">
+  
   <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+  
   <link rel="stylesheet" href="/src/styles.css">
 </head>
 <body>
-  <div id="mynetwork"></div>
-  <div class="chat-container">
-    <div class="chat-messages" id="chatMessages"></div>
-    <div class="chat-input-container">
-      <textarea class="chat-input" id="chatInput" placeholder="Ask about the graph..." rows="3"></textarea>
-      <button onclick="sendMessage()">Send</button>
+  <div id="mynetwork" class="network-container" role="main" aria-label="RDF Graph Visualization Area"></div>
+  
+  <aside class="chat-container draggable" aria-label="Chat Panel">
+    <div class="panel-header">
+      <span class="panel-title">Chat</span>
+      <button class="minimize-btn" onclick="togglePanel('chat')" aria-label="Minimize Chat Panel">++</button>
     </div>
-  </div>
-  <div class="controls">
-    <div class="search-container">
-      <input type="text" id="searchInput" placeholder="Search nodes..." style="width: 100%;">
-      <div id="searchResults" class="search-results"></div>
+    <div class="panel-content">
+      <div class="chat-messages" id="chatMessages" aria-live="polite" aria-atomic="false"></div>
+      <div class="chat-input-container">
+        <textarea class="chat-input" id="chatInput" placeholder="Ask about the graph..." rows="2" aria-label="Chat input field"></textarea>
+        <button onclick="sendMessage()" aria-label="Send Message">Send</button>
+      </div>
     </div>
-    <h3>Add New Triple</h3>
-    <div class="input-group">
-      <label for="subject">Subject:</label>
-      <input type="text" id="subject" placeholder="resource1">
+  </aside>
+  
+  <aside class="controls-container draggable" aria-label="Controls Panel">
+    <div class="panel-header">
+      <span class="panel-title">Controls</span>
+      <button class="minimize-btn" onclick="togglePanel('controls')" aria-label="Minimize Controls Panel">++</button>
     </div>
-    <div class="input-group">
-      <label for="predicate">Predicate:</label>
-      <input type="text" id="predicate" placeholder="knows">
+    <div class="panel-content">
+      <section class="search-section" aria-labelledby="search-heading">
+        <h3 id="search-heading" class="section-title">Search</h3>
+        <div class="search-container">
+          <input type="text" id="searchInput" placeholder="Search nodes/edges..." aria-label="Search graph elements">
+          <div id="searchResults" class="search-results" role="listbox"></div>
+        </div>
+      </section>
+
+      <section class="add-triple-section" aria-labelledby="add-triple-heading">
+        <h3 id="add-triple-heading" class="section-title">Add Triple</h3>
+        <div class="input-group">
+          <label for="subject">S:</label>
+          <input type="text" id="subject" placeholder="Subject URI" aria-label="Subject of the triple">
+        </div>
+        <div class="input-group">
+          <label for="predicate">P:</label>
+          <input type="text" id="predicate" placeholder="Predicate URI" aria-label="Predicate of the triple">
+        </div>
+        <div class="input-group">
+          <label for="object">O:</label>
+          <input type="text" id="object" placeholder="Object URI/literal" aria-label="Object of the triple">
+        </div>
+        <button onclick="addTriple()">Add</button>
+      </section>
+
+      <section class="file-operations-section" aria-labelledby="file-ops-heading">
+        <h3 id="file-ops-heading" class="section-title">Files</h3>
+        <button id="downloadButton" onclick="showDownloadDialog()">Save</button>
+        <input type="file" id="fileInput" accept=".ttl,.nt,.jsonld,.rdf,.owl" style="display: none;" aria-label="Select RDF file to load" />
+        <button onclick="document.getElementById('fileInput').click()">Load</button>
+        <button onclick="clearGraph()" class="danger-button" aria-label="Clear entire RDF graph">Clear</button>
+      </section>
+
+      <section class="visualization-filters-section" aria-labelledby="vis-filters-heading">
+        <h3 id="vis-filters-heading" class="section-title">Filters</h3>
+        <div class="input-group triple-slider-group">
+          <label for="tripleSlider">Triples:</label>
+          <input type="range" id="tripleSlider" min="1" max="100" value="100" aria-label="Slider to control number of triples displayed">
+          <span id="tripleCount">100%</span>
+        </div>
+        <button id="typeFilterButton" onclick="toggleTypeFilter()" aria-label="Toggle display of only type/subclass triples">Type/Class Only</button>
+      </section>
     </div>
-    <div class="input-group">
-      <label for="object">Object:</label>
-      <input type="text" id="object" placeholder="resource2">
-    </div>
-    <button onclick="addTriple()">Add Triple</button>
-    <button id="downloadButton" onclick="showDownloadDialog()">Save RDF Graph</button>
-    <input type="file" id="fileInput" accept=".ttl,.nt" style="display: none;" />
-    <button onclick="document.getElementById('fileInput').click()">Load RDF File</button>
-    <button onclick="clearGraph()" style="background-color: #ff4444; color: white;">Clear RDF Graph</button>
-    <div class="input-group" style="margin-top: 15px;">
-      <label for="tripleSlider">Visualize Triples (1-100%):</label>
-      <input type="range" id="tripleSlider" min="1" max="100" value="100" style="width: 150px;">
-      <span id="tripleCount">100</span>
-    </div>
-    <div class="input-group" style="margin-top: 10px;">
-      <button id="typeFilterButton" onclick="toggleTypeFilter()" style="width: 100%;">Show Only Type/Subclass</button>
-    </div>
-  </div>
+  </aside>
+
+  <div id="downloadDialogContainer"></div>
+
   <script type="text/javascript" src="/src/visualization.js"></script>
 </body>
 </html>

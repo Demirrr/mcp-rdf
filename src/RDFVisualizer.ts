@@ -9,6 +9,7 @@ import fsp from 'fs/promises';
 import { CurrentGraphData, ChatRequest, AddTripleArgs, ClientSocket, VisualizationData } from './interfaces/interface_visualizer';
 import * as N3 from 'n3';
 import { Quad, NamedNode, Literal, DataFactory } from 'n3';
+import { RDFTools } from './tools/RDFTools';
 const { namedNode, literal, defaultGraph } = DataFactory;
 require('dotenv').config();
 
@@ -21,6 +22,7 @@ export class RDFVisualizer {
   private model_name: string;
   private tools: ChatCompletionTool[];
   private chatHistory: ChatCompletionMessageParam[] = [];
+  private rdfTools!: RDFTools;
 
   constructor(graphManager: RDFKnowledgeGraphManager, port: number = 3000,templatePath: string = './src/visualization.html') {
     this.graphManager = graphManager;
@@ -104,6 +106,50 @@ export class RDFVisualizer {
             additionalProperties: false
           }
         }
+      },
+      {
+        type: "function",
+        function: {
+          name: "removeTriple",
+          description: "Remove a specific triple from the graph.",
+          parameters: {
+            type: "object",
+            properties: {
+              subject: { type: "string" },
+              predicate: { type: "string" },
+              object: { type: "string" }
+            },
+            required: ["subject", "predicate", "object"],
+            additionalProperties: false
+          }
+        }
+      },
+      {
+        type: "function",
+        function: {
+          name: "removeTriples",
+          description: "Remove multiple triples from the graph.",
+          parameters: {
+            type: "object",
+            properties: {
+              triples: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    subject: { type: "string" },
+                    predicate: { type: "string" },
+                    object: { type: "string" }
+                  },
+                  required: ["subject", "predicate", "object"],
+                  additionalProperties: false
+                }
+              }
+            },
+            required: ["triples"],
+            additionalProperties: false
+          }
+        }
       }
     ] as ChatCompletionTool[];
   }
@@ -146,6 +192,7 @@ export class RDFVisualizer {
     });
 
     this.io = new SocketIOServer(httpServer, {cors: {  origin: '*',methods: ['GET', 'POST']}});
+    this.rdfTools = new RDFTools(this.graphManager, this.io);
     this.io.on('connection', this.handleSocketConnection);
     httpServer.listen(this.port, () => {console.log(`Visualization server running at http://localhost:${this.port}`);});
   }
@@ -250,11 +297,8 @@ export class RDFVisualizer {
         body += chunk.toString();
       }
       const newTriple: Triple = JSON.parse(body);
-      await this.graphManager.updateGraph(graph => {
-        graph.triples.push(newTriple);
-      });
-      this.fetchAndSendGraphData(this.io);
-      this.sendSuccessResponse(res, { message: 'Triple added successfully' });
+      const result = await this.rdfTools.addTriple(newTriple);
+      this.sendSuccessResponse(res, { message: result.message });
     } catch (error) {
       console.error('Error adding triple via HTTP:', error);
       this.sendErrorResponse(res, 400, 'Invalid triple format');
@@ -273,7 +317,6 @@ export class RDFVisualizer {
       for await (const chunk of req) { body += chunk.toString(); }
       const requestData: ChatRequest = JSON.parse(body);
       const { message, currentGraphData } = requestData;
-
       // Add user message to chat history
       this.chatHistory.push({ role: "user", content: message });
 
@@ -297,14 +340,22 @@ export class RDFVisualizer {
 
           let functionResult = "";
           if (functionName === "get_number_of_triples") {
-            functionResult = await this.get_number_of_triples(currentGraphData);
+            functionResult = await this.rdfTools.get_number_of_triples(currentGraphData);
           }
           else if (functionName === "addTriple") {
-            const result = await this.handleAddTriple(args);
+            const result = await this.rdfTools.addTriple(args);
             functionResult = result.message;
           }
           else if (functionName === "addTriples") {
-            const result = await this.handleAddTriples(args);
+            const result = await this.rdfTools.addTriples(args);
+            functionResult = result.message;
+          }
+          else if (functionName === "removeTriple") {
+            const result = await this.rdfTools.removeTriple(args);
+            functionResult = result.message;
+          }
+          else if (functionName === "removeTriples") {
+            const result = await this.rdfTools.removeTriples(args);
             functionResult = result.message;
           }
           else {console.warn(`Unknown function: ${functionName}`);}
@@ -360,25 +411,6 @@ export class RDFVisualizer {
     }
   }
   
-  
-
-  private async handleAddTriple(args: AddTripleArgs): Promise<{ success: true; message: string }> {
-    await this.graphManager.updateGraph(graph => {
-      graph.triples.push(args);
-    });
-    this.fetchAndSendGraphData(this.io);
-    return { success: true, message: 'Triple added successfully' };
-  }
-
-  private async handleAddTriples(args: { triples: AddTripleArgs[] }): Promise<{ success: true; message: string }> {
-    await this.graphManager.updateGraph(graph => {
-      graph.triples.push(...args.triples);
-    });
-    this.fetchAndSendGraphData(this.io);
-    return { success: true, message: `Successfully added ${args.triples.length} triples` };
-  }
-  
-
   private sendSuccessResponse(res: ServerResponse, data: any, statusCode: number = 200): void {
     res.writeHead(statusCode, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ success: true, ...data }));
@@ -405,10 +437,8 @@ export class RDFVisualizer {
     socket.on('addTriple', async (triple: Triple) => {
       console.log('Client adding triple via WebSocket:', socket.id, triple);
       try {
-        await this.graphManager.updateGraph(graph => {
-          graph.triples.push(triple);
-        });
-        this.fetchAndSendGraphData(this.io);
+        const result = await this.rdfTools.addTriple(triple);
+        socket.emit('success', result.message);
       } catch (error) {
         console.error('Error adding triple via WebSocket:', error);
         socket.emit('error', 'Failed to add triple');
