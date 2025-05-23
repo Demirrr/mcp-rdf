@@ -10,6 +10,7 @@ import { CurrentGraphData, ChatRequest, AddTripleArgs, ClientSocket, Visualizati
 import * as N3 from 'n3';
 import { Quad, NamedNode, Literal, DataFactory } from 'n3';
 import { RDFTools } from './tools/RDFTools';
+import { ChatCompletionMessage } from 'openai/resources/chat/completions';
 const { namedNode, literal, defaultGraph } = DataFactory;
 require('dotenv').config();
 
@@ -59,6 +60,29 @@ export class RDFVisualizer {
           parameters: {
             type: "object",
             properties: {},
+            additionalProperties: false
+          }
+        }
+      },
+      {
+        type: "function",
+        function: {
+          name: "saveGraphToDisk",
+          description: "Save the current RDF graph to disk in a specified format.",
+          parameters: {
+            type: "object",
+            properties: {
+              format: {
+                type: "string",
+                description: "The RDF format to save the graph in (turtle, ntriples, nquads, trig)",
+                enum: ["turtle", "ntriples", "nquads", "trig"]
+              },
+              filename: {
+                type: "string",
+                description: "The name of the file to save the graph to (without extension)"
+              }
+            },
+            required: ["format", "filename"],
             additionalProperties: false
           }
         }
@@ -172,12 +196,7 @@ export class RDFVisualizer {
         try {
           const fileContent = readFileSync(filePath);
           const ext = path.extname(filePath);
-          const contentType = {
-            '.css': 'text/css',
-            '.js': 'text/javascript',
-            '.html': 'text/html',
-            '.json': 'application/json'
-          }[ext] || 'text/plain';
+          const contentType = {'.css': 'text/css', '.js': 'text/javascript', '.html': 'text/html', '.json': 'application/json'}[ext] || 'text/plain';
           
           res.writeHead(200, { 'Content-Type': contentType });
           res.end(fileContent);
@@ -305,7 +324,7 @@ export class RDFVisualizer {
     }
   }
 
-  private async get_number_of_triples(currentGraphData: CurrentGraphData) {
+  private async dept_get_number_of_triples(currentGraphData: CurrentGraphData) {
     const count = currentGraphData?.edges?.length ?? 0;
     return `There ${count === 1 ? 'is' : 'are'} ${count} triple${count === 1 ? '' : 's'} in the graph.`;
   }
@@ -323,7 +342,8 @@ export class RDFVisualizer {
       const initialResponse = await this.openai.chat.completions.create({
         model: this.model_name,
         messages: [
-          { role: "system", content: `You are an AI assistant that helps users interact with an RDF graph visualization. You can help users understand the graph structure, add new triples, and modify the visualization settings.`},
+          { role: "system", content: `You are an AI assistant that helps users interact with an RDF graph visualization. 
+            You can help users understand the graph structure, add new triples, and modify the visualization settings.`},
           ...this.chatHistory
         ],
         tools: this.tools,
@@ -351,12 +371,15 @@ export class RDFVisualizer {
             functionResult = result.message;
           }
           else if (functionName === "removeTriple") {
-            const result = await this.rdfTools.removeTriple(args);
+            const result = await this.rdfTools.removeTriple({ subject: args.subject, predicate: args.predicate, object: args.object });
             functionResult = result.message;
           }
           else if (functionName === "removeTriples") {
-            const result = await this.rdfTools.removeTriples(args);
+            const result = await this.rdfTools.removeTriples(args.triples);
             functionResult = result.message;
+          }
+          else if (functionName === "saveGraphToDisk") {
+            functionResult = await this.saveGraphToDisk(args.format, args.filename);
           }
           else {console.warn(`Unknown function: ${functionName}`);}
 
@@ -607,5 +630,146 @@ export class RDFVisualizer {
         details: errorMessage 
       }));
     }
+  }
+
+  private async saveGraphToDisk(format: string, filename: string): Promise<string> {
+    try {
+      const graph = await this.graphManager.readGraph();
+      
+      // Validate format
+      const validFormats = ['turtle', 'ntriples', 'nquads', 'trig'];
+      if (!validFormats.includes(format)) {
+        throw new Error(`Invalid format: ${format}. Valid formats are: ${validFormats.join(', ')}`);
+      }
+      
+      // Create filename with proper extension
+      const extension = format === 'turtle' ? 'ttl' : format;
+      const fullFilename = `${filename}.${extension}`;
+      
+      // Serialize the graph in memory
+      const writer = new N3.Writer({ format });
+      
+      try {
+        for (const triple of graph.triples) {
+          const subjectNode = namedNode(triple.subject);
+          const predicateNode = namedNode(triple.predicate);
+          let objectTerm: NamedNode | Literal;
+          
+          if (triple.object.startsWith('"') || triple.object.includes('^^') || triple.object.includes('@')) {
+            try {
+              const parser = new N3.Parser();
+              const quads = parser.parse(`_:s _:p ${triple.object} .`);
+              if (quads.length > 0 && quads[0].object.termType === 'Literal') {
+                objectTerm = quads[0].object as Literal;
+              } else {
+                objectTerm = literal(triple.object);
+              }
+            } catch (e) {
+              objectTerm = literal(triple.object);
+            }
+          } else {
+            objectTerm = namedNode(triple.object);
+          }
+          
+          writer.addQuad(subjectNode, predicateNode, objectTerm, defaultGraph());
+        }
+        
+        const serializedGraph = await new Promise<string>((resolve, reject) => {
+          writer.end((error: Error | null, result: string) => {
+            if (error) reject(error);
+            else resolve(result);
+          });
+        });
+        
+        // Write to file
+        await fsp.writeFile(fullFilename, serializedGraph, 'utf8');
+        
+        return `Graph successfully saved to ${fullFilename}`;
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+        throw new Error(`Failed to serialize and save graph: ${errorMessage}`);
+      }
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      throw new Error(`Failed to save graph: ${errorMessage}`);
+    }
+  }
+
+  private async handleFunctionCall(functionCall: ChatCompletionMessage.FunctionCall): Promise<string> {
+    try {
+      const args = JSON.parse(functionCall.arguments || '{}');
+
+      switch (functionCall.name) {
+        case 'get_weather':
+          return await this.getWeather(args.location);
+        case 'get_number_of_triples':
+          return await this.getNumberOfTriples();
+        case 'addTriple':
+          return await this.addTriple(args.subject, args.predicate, args.object);
+        case 'addTriples':
+          return await this.addTriples(args.triples);
+        case 'removeTriple':
+          return await this.removeTriple(args.subject, args.predicate, args.object);
+        case 'removeTriples':
+          return await this.removeTriples(args.triples);
+        case 'saveGraphToDisk':
+          return await this.saveGraphToDisk(args.format, args.filename);
+        default:
+          throw new Error(`Unknown function: ${functionCall.name}`);
+      }
+    } catch (error) {
+      console.error('Error handling function call:', error);
+      throw error;
+    }
+  }
+
+  private async getWeather(location: string): Promise<string> {
+    // Implementation for weather function
+    return `Weather for ${location} is not implemented yet.`;
+  }
+
+  private async getNumberOfTriples(): Promise<string> {
+    const graph = await this.graphManager.readGraph();
+    return `The graph contains ${graph.triples.length} triples.`;
+  }
+
+  private async addTriple(subject: string, predicate: string, object: string): Promise<string> {
+    await this.graphManager.addTriples([{ subject, predicate, object }]);
+    return `Added triple: ${subject} ${predicate} ${object}`;
+  }
+
+  private async addTriples(triples: Array<{ subject: string; predicate: string; object: string }>): Promise<string> {
+    await this.graphManager.addTriples(triples);
+    return `Added ${triples.length} triples to the graph.`;
+  }
+
+  private async removeTriple(subject: string, predicate: string, object: string): Promise<string> {
+    await this.graphManager.updateGraph(graph => {
+      const initialLength = graph.triples.length;
+      graph.triples = graph.triples.filter(triple => 
+        !(triple.subject === subject && 
+          triple.predicate === predicate && 
+          triple.object === object)
+      );
+      return graph.triples.length < initialLength;
+    });
+    return `Removed triple: ${subject} ${predicate} ${object}`;
+  }
+
+  private async removeTriples(triples: Array<{ subject: string; predicate: string; object: string }>): Promise<string> {
+    let removedCount = 0;
+    await this.graphManager.updateGraph(graph => {
+      const initialLength = graph.triples.length;
+      graph.triples = graph.triples.filter(triple => {
+        const shouldRemove = triples.some(t => 
+          t.subject === triple.subject && 
+          t.predicate === triple.predicate && 
+          t.object === triple.object
+        );
+        if (shouldRemove) removedCount++;
+        return !shouldRemove;
+      });
+    });
+    return `Removed ${removedCount} triples from the graph.`;
   }
 }
