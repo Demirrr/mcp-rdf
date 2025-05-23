@@ -11,6 +11,7 @@ import * as N3 from 'n3';
 import { Quad, NamedNode, Literal, DataFactory } from 'n3';
 import { RDFTools } from './tools/RDFTools';
 import { ChatCompletionMessage } from 'openai/resources/chat/completions';
+import { tools } from './tools';
 const { namedNode, literal, defaultGraph } = DataFactory;
 require('dotenv').config();
 
@@ -34,148 +35,7 @@ export class RDFVisualizer {
       apiKey: process.env.TOKEN,
       baseURL: process.env.BASE_URL
     });    
-    this.tools = [{
-      type: "function",
-      function: {
-        name: "get_weather",
-        description: "Get current temperature for a given location.",
-        parameters: {
-          type: "object",
-          properties: {
-            location: {
-              type: "string",
-              description: "City and country e.g. Bogotá, Colombia"
-            }
-          },
-          required: ["location"],
-          additionalProperties: false
-        }
-      }
-    },  
-    {
-      type: "function",
-        function: {
-          name: "get_number_of_triples",
-          description: "Get the number of triples.",
-          parameters: {
-            type: "object",
-            properties: {},
-            additionalProperties: false
-          }
-        }
-      },
-      {
-        type: "function",
-        function: {
-          name: "saveGraphToDisk",
-          description: "Save the current RDF graph to disk in a specified format.",
-          parameters: {
-            type: "object",
-            properties: {
-              format: {
-                type: "string",
-                description: "The RDF format to save the graph in (turtle, ntriples, nquads, trig)",
-                enum: ["turtle", "ntriples", "nquads", "trig"]
-              },
-              filename: {
-                type: "string",
-                description: "The name of the file to save the graph to (without extension)"
-              }
-            },
-            required: ["format", "filename"],
-            additionalProperties: false
-          }
-        }
-      },
-      {
-        type: "function",
-        function: {
-          name: "addTriple",
-          description: "Add a triple to the graph.",
-          parameters: {
-            type: "object",
-            properties: {
-              subject: { type: "string" },
-              predicate: { type: "string" },
-              object: { type: "string" }
-            },
-            required: ["subject", "predicate", "object"],
-            additionalProperties: false
-          } 
-        }
-      },
-      {
-        type: "function",
-        function: {
-          name: "addTriples",
-          description: "Add multiple triples to the graph.",
-          parameters: {
-            type: "object",
-            properties: {
-              triples: {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    subject: { type: "string" },
-                    predicate: { type: "string" },
-                    object: { type: "string" }
-                  },
-                  required: ["subject", "predicate", "object"],
-                  additionalProperties: false
-                }
-              }
-            },
-            required: ["triples"],
-            additionalProperties: false
-          }
-        }
-      },
-      {
-        type: "function",
-        function: {
-          name: "removeTriple",
-          description: "Remove a specific triple from the graph.",
-          parameters: {
-            type: "object",
-            properties: {
-              subject: { type: "string" },
-              predicate: { type: "string" },
-              object: { type: "string" }
-            },
-            required: ["subject", "predicate", "object"],
-            additionalProperties: false
-          }
-        }
-      },
-      {
-        type: "function",
-        function: {
-          name: "removeTriples",
-          description: "Remove multiple triples from the graph.",
-          parameters: {
-            type: "object",
-            properties: {
-              triples: {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    subject: { type: "string" },
-                    predicate: { type: "string" },
-                    object: { type: "string" }
-                  },
-                  required: ["subject", "predicate", "object"],
-                  additionalProperties: false
-                }
-              }
-            },
-            required: ["triples"],
-            additionalProperties: false
-          }
-        }
-      }
-    ] as ChatCompletionTool[];
+    this.tools = tools;
   }
 
   async initialize() {
@@ -324,12 +184,6 @@ export class RDFVisualizer {
     }
   }
 
-  private async dept_get_number_of_triples(currentGraphData: CurrentGraphData) {
-    const count = currentGraphData?.edges?.length ?? 0;
-    return `There ${count === 1 ? 'is' : 'are'} ${count} triple${count === 1 ? '' : 's'} in the graph.`;
-  }
-  
-
   private async handleChatRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
     let body = '';
     try {
@@ -380,6 +234,12 @@ export class RDFVisualizer {
           }
           else if (functionName === "saveGraphToDisk") {
             functionResult = await this.saveGraphToDisk(args.format, args.filename);
+          }
+          else if (functionName === "listAvailableFiles") {
+            functionResult = await this.listAvailableFiles();
+          }
+          else if (functionName === "readRDFFile") {
+            functionResult = await this.readRDFFile(args.filename);
           }
           else {console.warn(`Unknown function: ${functionName}`);}
 
@@ -695,81 +555,60 @@ export class RDFVisualizer {
     }
   }
 
-  private async handleFunctionCall(functionCall: ChatCompletionMessage.FunctionCall): Promise<string> {
+  private async listAvailableFiles(): Promise<string> {
     try {
-      const args = JSON.parse(functionCall.arguments || '{}');
-
-      switch (functionCall.name) {
-        case 'get_weather':
-          return await this.getWeather(args.location);
-        case 'get_number_of_triples':
-          return await this.getNumberOfTriples();
-        case 'addTriple':
-          return await this.addTriple(args.subject, args.predicate, args.object);
-        case 'addTriples':
-          return await this.addTriples(args.triples);
-        case 'removeTriple':
-          return await this.removeTriple(args.subject, args.predicate, args.object);
-        case 'removeTriples':
-          return await this.removeTriples(args.triples);
-        case 'saveGraphToDisk':
-          return await this.saveGraphToDisk(args.format, args.filename);
-        default:
-          throw new Error(`Unknown function: ${functionCall.name}`);
+      const files = await fsp.readdir(process.cwd());
+      const rdfFiles = files.filter(file => {
+        const ext = path.extname(file).toLowerCase();
+        return ['.ntriples','.ttl', '.nt', '.nq', '.trig', '.jsonld', '.rdf', '.owl'].includes(ext);
+      });
+      
+      if (rdfFiles.length === 0) {
+        return "No RDF files found in the current directory.";
       }
+      
+      return `Found ${rdfFiles.length} RDF file(s):\n${rdfFiles.join('\n')}`;
     } catch (error) {
-      console.error('Error handling function call:', error);
-      throw error;
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      throw new Error(`Failed to list files: ${errorMessage}`);
     }
   }
 
-  private async getWeather(location: string): Promise<string> {
-    // Implementation for weather function
-    return `Weather for ${location} is not implemented yet.`;
+  private async readRDFFile(filename: string): Promise<string> {
+    try {
+      const filePath = path.join(process.cwd(), filename);
+      
+      // Check if file exists
+      try {
+        await fsp.access(filePath, fsp.constants.F_OK);
+      } catch (error) {
+        throw new Error(`File not found: ${filename}`);
+      }
+
+      // Check if file has valid RDF extension
+      const ext = path.extname(filename).toLowerCase();
+      if (!['.ntriples', '.ttl', '.nt', '.nq', '.trig', '.jsonld', '.rdf', '.owl'].includes(ext)) {
+        throw new Error(`Invalid file extension: ${ext}. Must be one of: .ntriples, .ttl, .nt, .nq, .trig, .jsonld, .rdf, .owl`);
+      }
+
+      // Read and parse the file
+      const content = await fsp.readFile(filePath, 'utf8');
+      
+      // Create a new graph manager with the file
+      this.graphManager = new RDFKnowledgeGraphManager(filePath);
+      
+      // Read the graph to ensure it's loaded
+      const graph = await this.graphManager.readGraph();
+      
+      // Emit the new graph data to all connected clients
+      const visualizationData = this.convertToVisualization(graph);
+      this.io.emit('graphData', visualizationData);
+
+      return `Successfully loaded RDF file: ${filename} (${graph.triples.length} triples)`;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      throw new Error(`Failed to read RDF file: ${errorMessage}`);
+    }
   }
 
-  private async getNumberOfTriples(): Promise<string> {
-    const graph = await this.graphManager.readGraph();
-    return `The graph contains ${graph.triples.length} triples.`;
-  }
-
-  private async addTriple(subject: string, predicate: string, object: string): Promise<string> {
-    await this.graphManager.addTriples([{ subject, predicate, object }]);
-    return `Added triple: ${subject} ${predicate} ${object}`;
-  }
-
-  private async addTriples(triples: Array<{ subject: string; predicate: string; object: string }>): Promise<string> {
-    await this.graphManager.addTriples(triples);
-    return `Added ${triples.length} triples to the graph.`;
-  }
-
-  private async removeTriple(subject: string, predicate: string, object: string): Promise<string> {
-    await this.graphManager.updateGraph(graph => {
-      const initialLength = graph.triples.length;
-      graph.triples = graph.triples.filter(triple => 
-        !(triple.subject === subject && 
-          triple.predicate === predicate && 
-          triple.object === object)
-      );
-      return graph.triples.length < initialLength;
-    });
-    return `Removed triple: ${subject} ${predicate} ${object}`;
-  }
-
-  private async removeTriples(triples: Array<{ subject: string; predicate: string; object: string }>): Promise<string> {
-    let removedCount = 0;
-    await this.graphManager.updateGraph(graph => {
-      const initialLength = graph.triples.length;
-      graph.triples = graph.triples.filter(triple => {
-        const shouldRemove = triples.some(t => 
-          t.subject === triple.subject && 
-          t.predicate === triple.predicate && 
-          t.object === triple.object
-        );
-        if (shouldRemove) removedCount++;
-        return !shouldRemove;
-      });
-    });
-    return `Removed ${removedCount} triples from the graph.`;
-  }
 }
