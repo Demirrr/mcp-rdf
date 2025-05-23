@@ -743,4 +743,17 @@ function togglePanel(panelType) {
 }
 
 // Initialize draggable panels when the document is loaded
-document.addEventListener('DOMContentLoaded', initializeDraggablePanels);
+document.addEventListener('DOMContentLoaded', () => {
+  initializeDraggablePanels();
+  // Initialize controls panel in minimized state
+  const controlsPanel = document.querySelector('.controls-container');
+  const controlsContent = controlsPanel.querySelector('.panel-content');
+  controlsContent.style.display = 'none';
+  controlsPanel.style.height = controlsPanel.querySelector('.panel-header').offsetHeight + 'px';
+  // Disable all interactive elements inside the collapsed content
+  const interactiveElements = controlsContent.querySelectorAll('input, button, select, textarea');
+  interactiveElements.forEach(element => {
+    element.disabled = true;
+    element.setAttribute('tabindex', '-1');
+  });
+});
